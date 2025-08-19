@@ -9,4 +9,5 @@ dependencies = [
   "autogen-agentchat>=0.7.2",
   "autogen-ext[azure,openai]>=0.7.2",
   "pydantic>=2.11.7",
+  "pathspec>=0.12.1",
 ]
