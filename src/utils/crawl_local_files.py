@@ -1,7 +1,7 @@
 import os
 import fnmatch
 import pathspec
-
+from src.entity.file_info import FileInfo
 
 def _should_include_file(filepath, include_patterns, exclude_patterns, gitignore_spec):
     """
@@ -84,7 +84,7 @@ def crawl_local_files(
         use_relative_paths (bool): Whether to use paths relative to directory
 
     Returns:
-        list: [{"file_id": int, "path": str, "content": str}, ...]
+        List[FileInfo]: List of FileInfo objects
     """
     if not os.path.isdir(directory):
         raise ValueError(f"Directory does not exist: {directory}")
@@ -147,15 +147,15 @@ def crawl_local_files(
             with open(filepath, "r", encoding="utf-8-sig") as f:
                 content = f.read()
             
-            result_files.append({
-                "file_id": file_id,
-                "path": relpath,
-                "content": content
-            })
+            file_info = FileInfo(
+                file_id=file_id,
+                path=relpath,
+                content=content
+            )
+            result_files.append(file_info)
             file_id += 1
         except Exception:
             pass
-
 
     return result_files
 
@@ -182,4 +182,4 @@ if __name__ == "__main__":
     )
     print(f"Found {len(files_data)} files:")
     for file in files_data:
-        print(f" - {file['path']} (ID: {file['file_id']})")
+        print(f" - {file.path} (ID: {file.file_id})")

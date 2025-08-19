@@ -4,7 +4,7 @@ load_dotenv()
 
 class Config():
     def __init__(self):
-        self.default_model = os.getenv("GEMINI_MODEL", "googleai/gemini-2.5-flash")
+        self.default_model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
         
         self.api_key_map = {
             "gemini": os.getenv("GEMINI_API_KEY", "")

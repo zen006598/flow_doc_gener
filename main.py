@@ -1,14 +1,15 @@
 import asyncio
 import json
 import logging
-from core.config import Config
+from src.core.config import Config
 from autogen_agentchat.agents import AssistantAgent
 from autogen_ext.models.openai import OpenAIChatCompletionClient
 from autogen_agentchat import EVENT_LOGGER_NAME, TRACE_LOGGER_NAME
 from autogen_core.models._model_client import ModelInfo
 from autogen_agentchat.ui import Console
-from entity.entry_point import EntryPoint
-from entity.entry_point_response import EntryPointResponse
+from src.entity.entry_point import EntryPoint
+from src.entity.entry_point_response import EntryPointResponse
+from src.utils.crawl_local_files import crawl_local_files
 
 logging.basicConfig(level=logging.WARNING)
 trace_logger = logging.getLogger(TRACE_LOGGER_NAME)
