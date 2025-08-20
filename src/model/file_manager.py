@@ -1,14 +1,13 @@
-import json
-import os
 from typing import List
 from src.model.file_info import FileInfo
+from src.model.snapshot_manager import SnapshotManager
 
 
 class FileManager:
     """Class to handle file snapshots for the application"""
     
-    def __init__(self, target_dir: str = "src/cache"):
-        self.target_dir = target_dir
+    def __init__(self, snapshot_manager: SnapshotManager):
+        self.snapshot_manager = snapshot_manager
         self.file_name = "sources.json"
     
     def save_snapshot(self, files: List[FileInfo], run_id: str):
@@ -17,12 +16,8 @@ class FileManager:
             "dir_structure": {file.file_id: file.path for file in files},
             "contents": {file.file_id: self.compress_content(file.content) for file in files}
         }
-        # Save to src/cache/run_id/sources.json
-        cache_dir = os.path.join(self.target_dir, run_id)
-        os.makedirs(cache_dir, exist_ok=True)
-        sources_file = os.path.join(cache_dir, self.file_name)
-        with open(sources_file, "w", encoding="utf-8") as f:
-            json.dump(json_output, f, indent=2, ensure_ascii=False)
+        # Save using SnapshotManager
+        self.snapshot_manager.save_file(run_id, self.file_name, json_output)
             
     def compress_content(self, content):
         lines = content.split('\n')
@@ -46,27 +41,18 @@ class FileManager:
     
     def is_snapshot_exists(self, run_id: str) -> bool:
         """Check if snapshot already exists and has files"""
-        cache_dir = os.path.join(self.target_dir, run_id)
-        sources_file = os.path.join(cache_dir, self.file_name)
-        if os.path.exists(sources_file):
-            try:
-                with open(sources_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                # Check if snapshot has content
-                return bool(data.get("contents", {}))
-            except (json.JSONDecodeError, IOError):
-                return False
-        return False
+        if not self.snapshot_manager.file_exists(run_id, self.file_name):
+            return False
+        
+        data = self.snapshot_manager.load_file(run_id, self.file_name)
+        if data is None:
+            return False
+        
+        # Check if snapshot has content
+        return bool(data.get("contents", {}))
     
     def load_snapshot(self, run_id: str) -> dict:
         """Load snapshot data from sources.json"""
-        cache_dir = os.path.join(self.target_dir, run_id)
-        sources_file = os.path.join(cache_dir, self.file_name)
-        if os.path.exists(sources_file):
-            try:
-                with open(sources_file, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except (json.JSONDecodeError, IOError):
-                return {}
-        return {}
+        data = self.snapshot_manager.load_file(run_id, self.file_name)
+        return data if data is not None else {}
     

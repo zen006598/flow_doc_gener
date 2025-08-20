@@ -2,6 +2,7 @@ import asyncio
 import logging
 import json
 from datetime import datetime
+from src.analyzer.code_dependency_analyzer import CodeDependencyAnalyzer
 from src.core.config import Config
 from autogen_agentchat.agents import AssistantAgent
 from autogen_ext.models.openai import OpenAIChatCompletionClient
@@ -11,6 +12,7 @@ from autogen_agentchat.ui import Console
 from src.entity.entry_point import EntryPoint
 from src.entity.entry_point_response import EntryPointResponse
 from src.model.file_manager import FileManager
+from src.model.snapshot_manager import SnapshotManager
 from src.utils.crawl_local_files import crawl_local_files
 
 logging.basicConfig(level=logging.WARNING)
@@ -30,8 +32,10 @@ INCLUDE_PATTERNS = {"*.cs"}
 async def main():
     conf = Config()
     target_dir = "C:\\Users\\h3098\\Desktop\\Repos\\HousePrice.WebService.Community"
-    _run_id = None
-    file_manager = FileManager()
+    _run_id = "20250820T102831Z"
+    snapshot_path = "src/cache"
+    snapshot_manager = SnapshotManager(snapshot_path)
+    file_manager = FileManager(snapshot_manager)
     
     # Determine run_id: if specified and exists in cache, use it; otherwise generate new one
     if _run_id and file_manager.is_snapshot_exists(_run_id):
@@ -42,7 +46,13 @@ async def main():
         print(f"Creating new snapshot: {run_id}")
         files = crawl_local_files(directory=target_dir,exclude_patterns=EXCLUDE_PATTERNS, include_patterns=INCLUDE_PATTERNS, use_relative_paths=True)
         file_manager.save_snapshot(files, run_id)
-
+    analyzer = CodeDependencyAnalyzer(file_manager)
+    file_deps = analyzer.analyze_project(run_id)
+    
+    # Save analysis results using SnapshotManager
+    snapshot_manager.save_file(run_id, "anz_res.json", file_deps)
+    
+    return
     appoint_entries = ["GetCompanyBasicListByAddressAsync", "GetNotSendMailDataAsync"]
     with open("data/community.json", "r", encoding="utf-8") as f:
         data = json.load(f)
