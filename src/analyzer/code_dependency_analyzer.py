@@ -3,13 +3,14 @@ from pathlib import Path
 
 from src.analyzer.base_language_analyzer import BaseLanguageAnalyzer
 from src.analyzer.csharp_analyzer import CSharpAnalyzer
+from src.model.snapshot_manager import SnapshotManager
 
 class CodeDependencyAnalyzer:
-    def __init__(self, file_manager=None):
+    def __init__(self, snapshot_manager: SnapshotManager):
         self.language_analyzers = {
             'csharp': CSharpAnalyzer()
         }
-        self.file_manager = file_manager
+        self.snapshot_manager = snapshot_manager
         
         self.lang_map = {
             '.cs': 'csharp'
@@ -22,11 +23,11 @@ class CodeDependencyAnalyzer:
     def get_analyzer(self, programming_lang: str) -> Optional[BaseLanguageAnalyzer]:
         return self.language_analyzers.get(programming_lang)
 
-    def analyze_project(self, run_id: str) -> Dict[str, Any]:
+    def analyze_project(self, run_id: str, file_name: str) -> Dict[str, Any]:
         """
         從 FileManager 快照數據中分析項目
         """
-        snapshot_data = self.file_manager.load_snapshot(run_id)
+        snapshot_data = self.snapshot_manager.load_file(run_id, file_name)
         
         if not snapshot_data:
             raise ValueError("No data found")

@@ -3,12 +3,12 @@ from src.model.file_info import FileInfo
 from src.model.snapshot_manager import SnapshotManager
 
 
-class FileManager:
+class SourceCodeManager:
     """Class to handle file snapshots for the application"""
     
-    def __init__(self, snapshot_manager: SnapshotManager):
+    def __init__(self, snapshot_manager: SnapshotManager, file_name: str):
         self.snapshot_manager = snapshot_manager
-        self.file_name = "sources.json"
+        self.file_name = file_name
     
     def save_snapshot(self, files: List[FileInfo], run_id: str):
         """Save the file snapshot to JSON format"""
@@ -16,7 +16,6 @@ class FileManager:
             "dir_structure": {file.file_id: file.path for file in files},
             "contents": {file.file_id: self.compress_content(file.content) for file in files}
         }
-        # Save using SnapshotManager
         self.snapshot_manager.save_file(run_id, self.file_name, json_output)
             
     def compress_content(self, content):
@@ -50,9 +49,3 @@ class FileManager:
         
         # Check if snapshot has content
         return bool(data.get("contents", {}))
-    
-    def load_snapshot(self, run_id: str) -> dict:
-        """Load snapshot data from sources.json"""
-        data = self.snapshot_manager.load_file(run_id, self.file_name)
-        return data if data is not None else {}
-    

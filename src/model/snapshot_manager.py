@@ -1,13 +1,12 @@
 import os
 import json
-from typing import Dict, Any, Optional, List
-from pathlib import Path
+from typing import Any, Optional, List
 
 
 class SnapshotManager:
     """Manager class for handling snapshot operations in src/cache directory"""
     
-    def __init__(self, cache_dir: str = "src/cache"):
+    def __init__(self, cache_dir: str):
         self.cache_dir = cache_dir
         
     def _get_run_cache_dir(self, run_id: str) -> str:

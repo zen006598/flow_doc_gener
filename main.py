@@ -11,7 +11,7 @@ from autogen_core.models._model_client import ModelInfo
 from autogen_agentchat.ui import Console
 from src.entity.entry_point import EntryPoint
 from src.entity.entry_point_response import EntryPointResponse
-from src.model.file_manager import FileManager
+from src.model.source_code_manager import SourceCodeManager
 from src.model.snapshot_manager import SnapshotManager
 from src.utils.crawl_local_files import crawl_local_files
 
@@ -32,10 +32,12 @@ INCLUDE_PATTERNS = {"*.cs"}
 async def main():
     conf = Config()
     target_dir = "C:\\Users\\h3098\\Desktop\\Repos\\HousePrice.WebService.Community"
-    _run_id = "20250820T102831Z"
-    snapshot_path = "src/cache"
-    snapshot_manager = SnapshotManager(snapshot_path)
-    file_manager = FileManager(snapshot_manager)
+    _run_id = None
+    source_code_cache_file = conf.cache_file_name_map["source_code"]
+    dependence_cache_file = conf.cache_file_name_map["dependence"]
+    
+    snapshot_manager = SnapshotManager(conf.cache_path)
+    file_manager = SourceCodeManager(snapshot_manager, file_name=source_code_cache_file)
     
     # Determine run_id: if specified and exists in cache, use it; otherwise generate new one
     if _run_id and file_manager.is_snapshot_exists(_run_id):
@@ -46,31 +48,39 @@ async def main():
         print(f"Creating new snapshot: {run_id}")
         files = crawl_local_files(directory=target_dir,exclude_patterns=EXCLUDE_PATTERNS, include_patterns=INCLUDE_PATTERNS, use_relative_paths=True)
         file_manager.save_snapshot(files, run_id)
-    analyzer = CodeDependencyAnalyzer(file_manager)
-    file_deps = analyzer.analyze_project(run_id)
+
+    # check cache first
+    if snapshot_manager.file_exists(run_id, dependence_cache_file):
+        print(f"Loading existing analysis results for {run_id}")
+        file_deps = snapshot_manager.load_file(run_id, dependence_cache_file)
+    else:
+        print(f"Analyzing project dependencies for {run_id}")
+        analyzer = CodeDependencyAnalyzer(snapshot_manager)
+        file_deps = analyzer.analyze_project(run_id, source_code_cache_file)
+        
+        # Save analysis results using SnapshotManager
+        snapshot_manager.save_file(run_id, dependence_cache_file, file_deps)
     
-    # Save analysis results using SnapshotManager
-    snapshot_manager.save_file(run_id, "anz_res.json", file_deps)
-    
-    return
+    client = OpenAIChatCompletionClient(
+        model=conf.default_model,
+        api_key=conf.api_key_map["gemini"],
+        base_url=conf.base_url_map["gemini"],
+        model_info=ModelInfo(
+            vision=False,
+            function_calling=True,
+            json_output=True,
+            family=None,
+            structured_output=True
+        ),
+        parallel_tool_calls=False,
+    )
+
     appoint_entries = ["GetCompanyBasicListByAddressAsync", "GetNotSendMailDataAsync"]
     with open("data/community.json", "r", encoding="utf-8") as f:
         data = json.load(f)
 
-    client = OpenAIChatCompletionClient(
-            model=conf.default_model,
-            api_key=conf.api_key_map["gemini"],
-            base_url=conf.base_url_map["gemini"],
-            model_info=ModelInfo(
-                vision=False,
-                function_calling=True,
-                json_output=True,
-                family=None,
-                structured_output=True
-            ),
-            parallel_tool_calls=False,
-        )
     
+    return
     detector_agent = AssistantAgent(
         "entry_point_detector",
         model_client=client,
