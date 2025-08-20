@@ -31,15 +31,17 @@ async def main():
     conf = Config()
     target_dir = "C:\\Users\\h3098\\Desktop\\Repos\\HousePrice.WebService.Community"
     _run_id = None
-    run_id = _run_id or datetime.now().strftime("%Y%m%dT%H%M%SZ")
-    file_manager = FileManager(run_id=run_id)
-
-    # Check if snapshot already exists, skip if it does
-    if file_manager.is_snapshot_exists():
-        print(f"{run_id} existed, use snapshot.")
+    file_manager = FileManager()
+    
+    # Determine run_id: if specified and exists in cache, use it; otherwise generate new one
+    if _run_id and file_manager.is_snapshot_exists(_run_id):
+        run_id = _run_id
+        print(f"Using existing snapshot: {run_id}")
     else:
+        run_id = datetime.now().strftime("%Y%m%dT%H%M%SZ")
+        print(f"Creating new snapshot: {run_id}")
         files = crawl_local_files(directory=target_dir,exclude_patterns=EXCLUDE_PATTERNS, include_patterns=INCLUDE_PATTERNS, use_relative_paths=True)
-        file_manager.save_snapshot(files)
+        file_manager.save_snapshot(files, run_id)
 
     appoint_entries = ["GetCompanyBasicListByAddressAsync", "GetNotSendMailDataAsync"]
     with open("data/community.json", "r", encoding="utf-8") as f:
