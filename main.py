@@ -10,7 +10,7 @@ from autogen_core.models._model_client import ModelInfo
 from autogen_agentchat.ui import Console
 from src.entity.entry_point import EntryPoint
 from src.entity.entry_point_response import EntryPointResponse
-from src.model.file_snapshot import FileSnapshot
+from src.model.file_manager import FileManager
 from src.utils.crawl_local_files import crawl_local_files
 
 logging.basicConfig(level=logging.WARNING)
@@ -30,16 +30,16 @@ INCLUDE_PATTERNS = {"*.cs"}
 async def main():
     conf = Config()
     target_dir = "C:\\Users\\h3098\\Desktop\\Repos\\HousePrice.WebService.Community"
-    _run_id = "20250820T095222Z"
+    _run_id = None
     run_id = _run_id or datetime.now().strftime("%Y%m%dT%H%M%SZ")
-    file_snapshot = FileSnapshot(run_id=run_id)
+    file_manager = FileManager(run_id=run_id)
 
     # Check if snapshot already exists, skip if it does
-    if file_snapshot.snapshot_exists():
-        print(f"{run_id} already exists, use snapshot.")
+    if file_manager.is_snapshot_exists():
+        print(f"{run_id} existed, use snapshot.")
     else:
         files = crawl_local_files(directory=target_dir,exclude_patterns=EXCLUDE_PATTERNS, include_patterns=INCLUDE_PATTERNS, use_relative_paths=True)
-        file_snapshot.save_snapshot(files)
+        file_manager.save_snapshot(files)
 
     appoint_entries = ["GetCompanyBasicListByAddressAsync", "GetNotSendMailDataAsync"]
     with open("data/community.json", "r", encoding="utf-8") as f:

@@ -4,7 +4,7 @@ from typing import List
 from src.model.file_info import FileInfo
 
 
-class FileSnapshot:
+class FileManager:
     """Class to handle file snapshots for the application"""
     
     def __init__(self, run_id: str, target_dir: str = "src/cache"):
@@ -43,7 +43,7 @@ class FileSnapshot:
         
         return '\n'.join(compressed_lines)
     
-    def snapshot_exists(self) -> bool:
+    def is_snapshot_exists(self) -> bool:
         """Check if snapshot already exists and has files"""
         sources_file = os.path.join(self.cache_dir, "sources.json")
         if os.path.exists(sources_file):
