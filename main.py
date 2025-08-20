@@ -1,6 +1,7 @@
 import asyncio
-import json
 import logging
+import json
+from datetime import datetime
 from src.core.config import Config
 from autogen_agentchat.agents import AssistantAgent
 from autogen_ext.models.openai import OpenAIChatCompletionClient
@@ -9,6 +10,7 @@ from autogen_core.models._model_client import ModelInfo
 from autogen_agentchat.ui import Console
 from src.entity.entry_point import EntryPoint
 from src.entity.entry_point_response import EntryPointResponse
+from src.model.file_snapshot import FileSnapshot
 from src.utils.crawl_local_files import crawl_local_files
 
 logging.basicConfig(level=logging.WARNING)
@@ -20,8 +22,25 @@ event_logger = logging.getLogger(EVENT_LOGGER_NAME)
 event_logger.addHandler(logging.StreamHandler())
 event_logger.setLevel(logging.DEBUG)
 
+EXCLUDE_PATTERNS = {"*.md", "dockerfile", "*test*", "*Test*", "*test*/*", 
+                    "*Test*/*", "*/test*/*", "*/Test*/*", "tests/*", 
+                    "test/*", "__tests__/*"}
+INCLUDE_PATTERNS = {"*.cs"}
+
 async def main():
     conf = Config()
+    target_dir = "C:\\Users\\h3098\\Desktop\\Repos\\HousePrice.WebService.Community"
+    _run_id = "20250820T095222Z"
+    run_id = _run_id or datetime.now().strftime("%Y%m%dT%H%M%SZ")
+    file_snapshot = FileSnapshot(run_id=run_id)
+
+    # Check if snapshot already exists, skip if it does
+    if file_snapshot.snapshot_exists():
+        print(f"{run_id} already exists, use snapshot.")
+    else:
+        files = crawl_local_files(directory=target_dir,exclude_patterns=EXCLUDE_PATTERNS, include_patterns=INCLUDE_PATTERNS, use_relative_paths=True)
+        file_snapshot.save_snapshot(files)
+
     appoint_entries = ["GetCompanyBasicListByAddressAsync", "GetNotSendMailDataAsync"]
     with open("data/community.json", "r", encoding="utf-8") as f:
         data = json.load(f)

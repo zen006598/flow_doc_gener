@@ -1,7 +1,8 @@
 import os
 import fnmatch
+from typing import List
 import pathspec
-from src.entity.file_info import FileInfo
+from src.model.file_info import FileInfo
 
 def _should_include_file(filepath, include_patterns, exclude_patterns, gitignore_spec):
     """
@@ -73,7 +74,7 @@ def crawl_local_files(
     exclude_patterns=None,
     max_file_size=None,
     use_relative_paths=True,
-):
+) -> List[FileInfo]:
     """
     Crawl files in a local directory with similar interface as crawl_github_files.
     Args:
