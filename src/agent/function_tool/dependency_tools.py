@@ -47,7 +47,7 @@ async def create_dependency_tools(
             
             result = []
             for d in snapshot_data["deps"]:
-                if d["to"] == file_id:
+                if int(d["to"]) == file_id:
                     result.append(d)
             
             return result
@@ -75,7 +75,7 @@ async def create_dependency_tools(
             
             result = []
             for d in snapshot_data["deps"]:
-                if d["from"] == file_id:
+                if int(d["from"]) == file_id:
                     result.append(d)
             
             return result
