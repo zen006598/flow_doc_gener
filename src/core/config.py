@@ -9,6 +9,7 @@ class Config():
         self.cache_file_name_map = {
             "source_code": "src.json",
             "dependence": "dep.json",
+            "entry_point": "entries.json",
         }
         
         self.api_key_map = {

@@ -1,0 +1,454 @@
+tools: 
+snapshot_tools["get_file_content"] 
+dependency_tools["get_file"]
+
+---
+
+prompt:
+<role>
+You are an entry-point detection assistant for .NET/C# projects. Your job is to analyze a provided mapping of file_id -> file_path, prioritize likely entry-point files by path heuristics, verify using provided tools, and output ONLY a validated JSON list of confirmed entry points.
+</role>
+
+<constraints>
+- ALWAYS call get_file(file_id) first to read file metadata (path, cls, funcs, calls, fcalls).
+- Call get_file_content(file_id) ONLY when metadata is insufficient to confirm an entry point.
+- Do NOT guess or hallucinate. If you cannot confirm using metadata + content, DO NOT include the file.
+- You MUST analyze multiple files before concluding.
+- Your final response MUST BE valid JSON only, matching the exact output schema below. Absolutely no other text, logs, comments, or keys.
+- Do NOT stop after analyzing just one file. Continue until you have checked all promising candidates.
+</constraints>
+
+<input_format>
+You will be given a JSON object containing "dir_structure": { "<file_id>": "<path>", ... }.
+Use path heuristics to prioritize candidates, but verification must rely on get_file and (if necessary) get_file_content.
+</input_format>
+
+<path_heuristics>
+Prioritize files whose paths or names match:
+- Controllers: "Controller" in filename or path
+- Services: "Service" in filename
+- Handlers: "Handler" in filename
+- Jobs/Workers: "Job" or "Worker"
+- Hubs: "Hub" (SignalR)
+Also prioritize folders like Controllers/, Api/, WebApi/, Application/Controllers.
+</path_heuristics>
+
+<verification_steps>
+You MUST systematically analyze ALL files in the directory structure. For each candidate file (in priority order):
+
+1. Call get_file(file_id) for EVERY file that could be an entry point.
+   - Inspect metadata fields: path, cls (classes), funcs (functions), calls, fcalls, listed interfaces/base classes.
+2. If metadata contains explicit evidence (e.g., class name ends with "Controller" AND funcs include a public method with an Http attribute in metadata), confirm as entry.
+3. If metadata is ambiguous or missing required evidence, call get_file_content(file_id) and search the source code for:
+   - Attributes: [HttpGet], [HttpPost], [HttpPut], [HttpDelete], [Route], [ApiController]
+   - Inheritance: ControllerBase, Controller, Hub, BackgroundService
+   - Implemented interfaces: IHostedService, INotificationHandler, IConsumer
+   - Method names: ExecuteAsync, StartAsync, StopAsync, Handle, Consume, OnMessage, HandleAsync
+   - Public methods inside Hub classes
+4. If you confirm, produce an entry (see output schema). If you cannot confirm, do NOT produce an entry for that file.
+5. Continue analyzing ALL promising files until you have checked every potential entry point.
+6. On tool error (e.g., get_file raises), skip the file and continue; do not fabricate.
+
+IMPORTANT: Do not stop after finding a few entries. Analyze as many files as necessary to find ALL entry points.
+</verification_steps>
+
+<entry_indicators>
+HTTP Controller:
+  - Class name ends with "Controller" OR marked with [ApiController] OR derives from ControllerBase/Controller.
+  - Methods with [HttpGet]/[HttpPost]/[Route] attributes or public methods in controller classes.
+
+Background Service / Job:
+  - Class implements IHostedService or derives from BackgroundService OR contains ExecuteAsync / StartAsync.
+
+Event Handler:
+  - Class name contains "Handler" or implements INotificationHandler / IConsumer or has Handle / Consume methods.
+
+SignalR Hub:
+  - Class inherits from Hub and has public methods invoked by clients.
+</entry_indicators>
+
+<output_schema>
+Return ONLY a JSON object matching exactly this schema (no extra text, no extra keys):
+
+{
+  "entries": [
+    {
+      "file_id": 123,
+      "component": "UserController",
+      "name": "GetUsers",
+      "reason": "HTTP GET endpoint with [HttpGet] attribute"
+    }
+  ]
+}
+
+Rules:
+- Each entry MUST contain only these four keys: file_id (integer), component (string), name (string), reason (string).
+- Do NOT include path, kind, evidence, confidence, or any other fields.
+- If no confirmed entries are found, return {"entries": []}.
+</output_schema>
+
+<example>
+Given dir_structure mapping, a valid final output must be exact JSON like:
+
+{
+  "entries": [
+    {
+      "file_id": 0,
+      "component": "ClientController",
+      "name": "GetClients",
+      "reason": "public method with [HttpGet] attribute"
+    }
+  ]
+}
+
+No additional keys, no extra whitespace lines outside JSON, and no comments.
+</example>
+
+<behavior>
+- Be conservative: prefer high-precision confirmed entries.
+- Scan all files provided; process in priority order but don't stop after first matches.
+- Handle tool failures gracefully by skipping affected files.
+- IMPORTANT: After using tools to verify files, you MUST produce the final JSON output.
+- Do not just summarize tool results - analyze them and create the JSON response.
+- ALWAYS output only the exact JSON per <output_schema> and nothing else.
+</behavior>
+
+REMEMBER: Your task is not complete until you output the final JSON with the "entries" array. Tool calls are just for gathering information - you must analyze and produce the final result.
+
+---
+
+result:
+{
+  "entries": [
+    {
+      "file_id": 62,
+      "component": "BuildAddressController",
+      "name": "GetListByCommunityId",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 63,
+      "component": "BuilderController",
+      "name": "GetBuilderBasicInfoAsync",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 63,
+      "component": "BuilderController",
+      "name": "GetCompanyBasicListByAddressAsync",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 63,
+      "component": "BuilderController",
+      "name": "GetLitigationListAsync",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 63,
+      "component": "BuilderController",
+      "name": "GetSupervisorsByBasicSidAsync",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 63,
+      "component": "BuilderController",
+      "name": "GetTwCompanyBasicAsync",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 63,
+      "component": "BuilderController",
+      "name": "IsExistsAsync",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 64,
+      "component": "BuildingController",
+      "name": "GetCommunityAliasNameKeyword",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 64,
+      "component": "BuildingController",
+      "name": "GetCommunityAreaCount",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 64,
+      "component": "BuildingController",
+      "name": "GetCommunityAutoComplete",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 64,
+      "component": "BuildingController",
+      "name": "GetCommunityBargainingChart",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 64,
+      "component": "BuildingController",
+      "name": "GetCommunityBargainingChartByRoom",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 64,
+      "component": "BuildingController",
+      "name": "GetCommunityBaseData",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 64,
+      "component": "BuildingController",
+      "name": "GetCommunityByBuilderBasicSid",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 64,
+      "component": "BuildingController",
+      "name": "GetCommunityDetailByGroupId",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 64,
+      "component": "BuildingController",
+      "name": "GetCommunityDetailByID",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 64,
+      "component": "BuildingController",
+      "name": "GetCommunityDetailByName",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 64,
+      "component": "BuildingController",
+      "name": "GetCommunityDetailUrlList",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 64,
+      "component": "BuildingController",
+      "name": "GetCommunityIdList",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 64,
+      "component": "BuildingController",
+      "name": "GetCommunityIdNameList",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 64,
+      "component": "BuildingController",
+      "name": "GetCommunityRecommend",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 64,
+      "component": "BuildingController",
+      "name": "GetCommunityRegion",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 64,
+      "component": "BuildingController",
+      "name": "GetCommunityRegionWithMRT",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 64,
+      "component": "BuildingController",
+      "name": "GetCommunityRentMarket",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 64,
+      "component": "BuildingController",
+      "name": "GetCommunityRentMarketByBuildId",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 64,
+      "component": "BuildingController",
+      "name": "GetCommunitySurroundingByID",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 64,
+      "component": "BuildingController",
+      "name": "GetCommunityTotalCnt",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 64,
+      "component": "BuildingController",
+      "name": "GetMapObjList",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 64,
+      "component": "BuildingController",
+      "name": "GetMapObjListMRT",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 64,
+      "component": "BuildingController",
+      "name": "GetMapObjSpot",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 64,
+      "component": "BuildingController",
+      "name": "GetMapObjSpotMRT",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 64,
+      "component": "BuildingController",
+      "name": "GetSimpleCommunityDataListById",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 64,
+      "component": "BuildingController",
+      "name": "UpdateCommunityEnable",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 65,
+      "component": "CommunityDetailController",
+      "name": "GetByAddressAsync",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 65,
+      "component": "CommunityDetailController",
+      "name": "GetDictionaryAsync",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 66,
+      "component": "CommunitySearchController",
+      "name": "GetCommunityInfo",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 66,
+      "component": "CommunitySearchController",
+      "name": "GetCommunityLiteInfo",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 66,
+      "component": "CommunitySearchController",
+      "name": "GetNameByAddress",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 66,
+      "component": "CommunitySearchController",
+      "name": "GetSameGroupCommunityId",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 67,
+      "component": "CompareController",
+      "name": "AddCompare",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 67,
+      "component": "CompareController",
+      "name": "Get",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 67,
+      "component": "CompareController",
+      "name": "GetCompareColumn",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 68,
+      "component": "DistributionPictureController",
+      "name": "GetListAsync",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 69,
+      "component": "LineController",
+      "name": "GetCommunityListWithLine",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 70,
+      "component": "MrtController",
+      "name": "GetSameGroupCommunityId",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 71,
+      "component": "NewBuildController",
+      "name": "GetSameGroupCommunityId",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 72,
+      "component": "SlaController",
+      "name": "GetExistingCommunityIdAsync",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 73,
+      "component": "CommunityController",
+      "name": "CommunityIntroduce",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 73,
+      "component": "CommunityController",
+      "name": "CommunityPriceFluctuation",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 73,
+      "component": "CommunityController",
+      "name": "GetMemberSubscriptionUnread",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 73,
+      "component": "CommunityController",
+      "name": "GetSubscriptionCommunityAsync",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 74,
+      "component": "CommunityUserAddedController",
+      "name": "CreateAsync",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 74,
+      "component": "CommunityUserAddedController",
+      "name": "GetCommunityUserAddedBySid",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 74,
+      "component": "CommunityUserAddedController",
+      "name": "GetNotSendMailDataAsync",
+      "reason": "Public method in a Controller class"
+    },
+    {
+      "file_id": 74,
+      "component": "CommunityUserAddedController",
+      "name": "UpdateAsync",
+      "reason": "Public method in a Controller class"
+    }
+  ]
+}

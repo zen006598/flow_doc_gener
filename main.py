@@ -2,6 +2,7 @@ import asyncio
 import logging
 import json
 from datetime import datetime
+from src.agent.entry_point_detector import entry_point_detector
 from src.analyzer.code_dependency_analyzer import CodeDependencyAnalyzer
 from src.core.config import Config
 from autogen_agentchat.agents import AssistantAgent
@@ -13,6 +14,7 @@ from src.entity.entry_point import EntryPoint
 from src.entity.entry_point_response import EntryPointResponse
 from src.model.source_code_manager import SourceCodeManager
 from src.model.snapshot_manager import SnapshotManager
+from src.utils.extract_json_response import extract_json_response
 from src.utils.crawl_local_files import crawl_local_files
 
 logging.basicConfig(level=logging.WARNING)
@@ -26,28 +28,29 @@ event_logger.setLevel(logging.DEBUG)
 
 EXCLUDE_PATTERNS = {"*.md", "dockerfile", "*test*", "*Test*", "*test*/*", 
                     "*Test*/*", "*/test*/*", "*/Test*/*", "tests/*", 
-                    "test/*", "__tests__/*"}
+                    "test/*", "__tests__/*", "Program.cs", "*/Program.cs", "*/Startup.cs","Startup.cs", "migrations/*", "*/migrations/*", "*/Migrations/*", "*/migrations/*", "*/Migrations/*"}
 INCLUDE_PATTERNS = {"*.cs"}
 
 async def main():
     conf = Config()
-    target_dir = "C:\\Users\\h3098\\Desktop\\Repos\\HousePrice.WebService.Community"
-    _run_id = None
+    target_dir = ""
+    _run_id = "20250820T181414Z"
     source_code_cache_file = conf.cache_file_name_map["source_code"]
     dependence_cache_file = conf.cache_file_name_map["dependence"]
+    entry_point_cache_file = conf.cache_file_name_map["entry_point"]
     
     snapshot_manager = SnapshotManager(conf.cache_path)
-    file_manager = SourceCodeManager(snapshot_manager, file_name=source_code_cache_file)
+    source_code_manager = SourceCodeManager(snapshot_manager, file_name=source_code_cache_file)
     
     # Determine run_id: if specified and exists in cache, use it; otherwise generate new one
-    if _run_id and file_manager.is_snapshot_exists(_run_id):
+    if _run_id and source_code_manager.is_snapshot_exists(_run_id):
         run_id = _run_id
         print(f"Using existing snapshot: {run_id}")
     else:
         run_id = datetime.now().strftime("%Y%m%dT%H%M%SZ")
         print(f"Creating new snapshot: {run_id}")
         files = crawl_local_files(directory=target_dir,exclude_patterns=EXCLUDE_PATTERNS, include_patterns=INCLUDE_PATTERNS, use_relative_paths=True)
-        file_manager.save_snapshot(files, run_id)
+        source_code_manager.save_snapshot(files, run_id)
 
     # check cache first
     if snapshot_manager.file_exists(run_id, dependence_cache_file):
@@ -58,7 +61,6 @@ async def main():
         analyzer = CodeDependencyAnalyzer(snapshot_manager)
         file_deps = analyzer.analyze_project(run_id, source_code_cache_file)
         
-        # Save analysis results using SnapshotManager
         snapshot_manager.save_file(run_id, dependence_cache_file, file_deps)
     
     client = OpenAIChatCompletionClient(
@@ -70,16 +72,39 @@ async def main():
             function_calling=True,
             json_output=True,
             family=None,
-            structured_output=True
+            structured_output=False
         ),
         parallel_tool_calls=False,
     )
-
-    appoint_entries = ["GetCompanyBasicListByAddressAsync", "GetNotSendMailDataAsync"]
-    with open("data/community.json", "r", encoding="utf-8") as f:
-        data = json.load(f)
-
     
+    # appoint_entries = ["GetCompanyBasicListByAddressAsync", "GetNotSendMailDataAsync"]
+
+    detector_agent = await entry_point_detector(
+      client=client, 
+      run_id=run_id, 
+      snapshot_manager=snapshot_manager,)
+    
+    source_code_info = snapshot_manager.load_file(run_id, source_code_cache_file)
+    
+    dir_structure = source_code_info["dir_structure"]
+    task_input = {"dir_structure": dir_structure}
+    
+    res = await Console(
+      detector_agent.run_stream(task=json.dumps(task_input)))
+    
+    final_msg = None
+    if res.messages:
+        final_msg = res.messages[-1]
+        
+    final_content = extract_json_response(final_msg.content)
+
+    try:
+        snapshot_manager.save_file(run_id, entry_point_cache_file, json.loads(final_content))
+
+    except json.JSONDecodeError as e:
+        print(f"解析 entry_point_detector 回應時發生錯誤: {e}")
+        return
+
     return
     detector_agent = AssistantAgent(
         "entry_point_detector",
