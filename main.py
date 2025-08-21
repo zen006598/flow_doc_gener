@@ -2,7 +2,6 @@ import asyncio
 import logging
 import json
 from datetime import datetime
-from src.agent.entry_point_detector import entry_point_detector
 from src.analyzer.code_dependency_analyzer import CodeDependencyAnalyzer
 from src.core.config import Config
 from autogen_agentchat.agents import AssistantAgent
@@ -14,7 +13,7 @@ from src.entity.entry_point import EntryPoint
 from src.entity.entry_point_response import EntryPointResponse
 from src.model.source_code_manager import SourceCodeManager
 from src.model.snapshot_manager import SnapshotManager
-from src.utils.extract_json_response import extract_json_response
+from src.service.entry_point_extractor import EntryPointExtractor
 from src.utils.crawl_local_files import crawl_local_files
 
 logging.basicConfig(level=logging.WARNING)
@@ -35,9 +34,12 @@ async def main():
     conf = Config()
     target_dir = ""
     _run_id = "20250820T181414Z"
+    appoint_entries = ["GetCompanyBasicListByAddressAsync", "GetNotSendMailDataAsync"]
+    
     source_code_cache_file = conf.cache_file_name_map["source_code"]
     dependence_cache_file = conf.cache_file_name_map["dependence"]
     entry_point_cache_file = conf.cache_file_name_map["entry_point"]
+    
     
     snapshot_manager = SnapshotManager(conf.cache_path)
     source_code_manager = SourceCodeManager(snapshot_manager, file_name=source_code_cache_file)
@@ -63,49 +65,38 @@ async def main():
         
         snapshot_manager.save_file(run_id, dependence_cache_file, file_deps)
     
-    client = OpenAIChatCompletionClient(
-        model=conf.default_model,
-        api_key=conf.api_key_map["gemini"],
-        base_url=conf.base_url_map["gemini"],
-        model_info=ModelInfo(
-            vision=False,
-            function_calling=True,
-            json_output=True,
-            family=None,
-            structured_output=False
-        ),
-        parallel_tool_calls=False,
-    )
+    extractor = EntryPointExtractor(snapshot_manager)
     
-    # appoint_entries = ["GetCompanyBasicListByAddressAsync", "GetNotSendMailDataAsync"]
-
-    detector_agent = await entry_point_detector(
-      client=client, 
-      run_id=run_id, 
-      snapshot_manager=snapshot_manager,)
+    extract_count = 0
     
-    source_code_info = snapshot_manager.load_file(run_id, source_code_cache_file)
-    
-    dir_structure = source_code_info["dir_structure"]
-    task_input = {"dir_structure": dir_structure}
-    
-    res = await Console(
-      detector_agent.run_stream(task=json.dumps(task_input)))
-    
-    final_msg = None
-    if res.messages:
-        final_msg = res.messages[-1]
+    if appoint_entries:
+        extract_count = extractor.extract_manually(file_deps, appoint_entries, run_id, entry_point_cache_file)
+    else:
+        client = OpenAIChatCompletionClient(
+            model=conf.default_model,
+            api_key=conf.api_key_map["gemini"],
+            base_url=conf.base_url_map["gemini"],
+            model_info=ModelInfo(
+                vision=False,
+                function_calling=True,
+                json_output=True,
+                family=None,
+                structured_output=False
+            ),
+            parallel_tool_calls=False,
+        )
         
-    final_content = extract_json_response(final_msg.content)
-
-    try:
-        snapshot_manager.save_file(run_id, entry_point_cache_file, json.loads(final_content))
-
-    except json.JSONDecodeError as e:
-        print(f"解析 entry_point_detector 回應時發生錯誤: {e}")
+        extract_count = await extractor.extract_with_agent(
+            client, file_deps, run_id, entry_point_cache_file
+        )
+        
+    if extract_count == 0:
+        print("No entry points extracted.")
         return
 
+    print(f"extract {extract_count} entry points")
     return
+  
     detector_agent = AssistantAgent(
         "entry_point_detector",
         model_client=client,
