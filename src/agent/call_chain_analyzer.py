@@ -108,7 +108,6 @@ Return ONLY JSON:
 
 ```json
 {
-  "entry_id": <number>,
   "file_id": <number>,
   "name": <entry_function_name>,
   "call_chain": [

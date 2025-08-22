@@ -8,7 +8,7 @@ from src.agent.function_tool.source_code_tools import create_source_code_tools
 from src.analyzer.code_dependency_analyzer import CodeDependencyAnalyzer
 from src.core.config import Config
 from autogen_ext.models.openai import OpenAIChatCompletionClient
-from autogen_agentchat import EVENT_LOGGER_NAME, TRACE_LOGGER_NAME
+from autogen_agentchat import EVENT_LOGGER_NAME
 from autogen_core.models._model_client import ModelInfo
 from autogen_agentchat.ui import Console
 from src.model.source_code_manager import SourceCodeManager
@@ -16,14 +16,10 @@ from src.model.snapshot_manager import SnapshotManager
 from src.service.entry_point_extractor import EntryPointExtractor
 from src.utils import extract_json_response, remove_empty_arrays, crawl_local_files
 
-logging.basicConfig(level=logging.WARNING)
-trace_logger = logging.getLogger(TRACE_LOGGER_NAME)
-trace_logger.addHandler(logging.StreamHandler())
-trace_logger.setLevel(logging.DEBUG)
-
-event_logger = logging.getLogger(EVENT_LOGGER_NAME)
-event_logger.addHandler(logging.StreamHandler())
-event_logger.setLevel(logging.DEBUG)
+# logging.basicConfig(level=logging.WARNING)
+# event_logger = logging.getLogger(EVENT_LOGGER_NAME)
+# event_logger.addHandler(logging.StreamHandler())
+# event_logger.setLevel(logging.DEBUG)
 
 EXCLUDE_PATTERNS = {"*.md", "dockerfile", "*test*", "*Test*", "*test*/*", 
                     "*Test*/*", "*/test*/*", "*/Test*/*", "tests/*", 
@@ -34,8 +30,7 @@ async def main():
     conf = Config()
     target_dir = "C:\\Users\\h3098\\Desktop\\Repos\\HousePrice.WebService.Community\\HousePrice.Webservice.Community"
     _run_id = "20250821T165442Z"
-    # appoint_entries = ["GetCompanyBasicListByAddressAsync", "GetNotSendMailDataAsync"]
-    appoint_entries = ["GetCompanyBasicListByAddressAsync"]
+    appoint_entries = ["GetCompanyBasicListByAddressAsync", "GetLitigationListAsync"]
     
     source_code_cache_file = conf.cache_file_name_map["source_code"]
     dependence_cache_file = conf.cache_file_name_map["dependence"]
@@ -128,17 +123,18 @@ async def main():
             }
         }
         
-        result = await Console(call_chain_agent.run_stream(task=json.dumps(task_input)))
-        
-        if result.messages and result.messages.content:
-            content = result.messages[-1].content
-            json_content = extract_json_response(content)              
+        analyzed_result = await Console(
+            call_chain_agent.run_stream(task=json.dumps(task_input)),
+            output_stats=True)
+    
+        if analyzed_result.messages and analyzed_result.messages[-1] and analyzed_result.messages[-1].content:
+            content = analyzed_result.messages[-1].content
+            json_content = extract_json_response(content) 
             output_filename = f"{component}.{entry_name}.json"
             snapshot_manager.save_file(run_id, output_filename, json.loads(json_content))
 
         else:
-            print(f"警告：{component}.{entry_name} 沒有產生分析結果")
-            
+            print(f"Warning：{component}.{entry_name} 沒有產生分析結果")
         analyzed_count += 1
 
 
