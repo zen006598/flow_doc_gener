@@ -55,6 +55,9 @@ class CSharpAnalyzer(BaseLanguageAnalyzer):
             """,
             "classes": """
                 (class_declaration name: (identifier) @name)
+            """,
+            "interfaces": """
+                (interface_declaration name: (identifier) @name)
             """
         }
     
@@ -257,9 +260,10 @@ class CSharpAnalyzer(BaseLanguageAnalyzer):
         # 分析函數
         function_calls = self.analyze_function_calls(tree, code_bytes)
         
-        # 提取函數和類
+        # 提取函數、類和介面
         functions = self.extract_symbols(tree, code_bytes, "functions")
         classes = self.extract_symbols(tree, code_bytes, "classes")
+        interfaces = self.extract_symbols(tree, code_bytes, "interfaces")
         
         # 提取所有調用的簡單列表（用於向後兼容）
         all_calls = []
@@ -272,6 +276,7 @@ class CSharpAnalyzer(BaseLanguageAnalyzer):
             'path': file_path,
             'func': functions,
             'cls': classes,
+            'interfaces': interfaces,
             'calls': all_calls,
             'fcalls': function_calls 
         }
