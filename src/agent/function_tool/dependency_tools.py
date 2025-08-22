@@ -1,7 +1,6 @@
-from typing import Dict, List, Any, Callable
+from typing import Dict, List, Any
 from typing_extensions import Annotated
 from autogen_core.tools import FunctionTool
-from autogen_core import CancellationToken
 
 from src.core.config import Config
 from src.model.snapshot_manager import SnapshotManager
@@ -81,6 +80,48 @@ async def create_dependency_tools(
             return result
         except Exception as e:
             return []
+        
+    async def get_deps_by_file_id_and_expr(
+        file_id: Annotated[int, "The ID of the file to get dependencies from"], 
+        expr: Annotated[str, "The expression to match in the call"]
+    ) -> List[int]:
+        """根據檔案ID和表達式查詢相依性目標檔案
+        
+        找出指定檔案中呼叫特定表達式的所有目標檔案ID。
+        用於精確追蹤特定方法呼叫的流向。
+        
+        參數：
+        - file_id: 發起呼叫的檔案ID
+        - expr: 要匹配的呼叫表達式
+        
+        返回：
+        - List[int]: 被呼叫的目標檔案ID列表
+        
+        使用場景：
+        - 追蹤特定方法呼叫的流向
+        - 分析某個特定呼叫會影響哪些檔案
+        - 精確定位相依性關係
+        
+        範例：
+        input: file_id=209, expr="_PageAgentService.PageAgent(list.TotalCount.ToInt(),parameter.Ps,parameter.Pg)"
+        output: [527, 570]
+        """
+        try:
+            snapshot_data = snapshot_manager.load_file(run_id, dependency_cache_file)
+            if not snapshot_data or "deps" not in snapshot_data:
+                return []
+            
+            result_set = set()
+            for d in snapshot_data["deps"]:
+                if int(d["from"]) == file_id and "call" in d:
+                    call_info = d["call"]
+                    if isinstance(call_info, dict) and "expr" in call_info:
+                        if call_info["expr"] == expr:
+                            result_set.add(int(d["to"]))
+            
+            return list(result_set)
+        except Exception as e:
+            return []
     
     async def get_file(file_id: Annotated[int, "The ID of the file to get information for"]) -> Dict[str, Any]:
         """取得檔案的詳細資訊
@@ -111,6 +152,68 @@ async def create_dependency_tools(
             return snapshot_data["files"][file_id_str]
         except Exception as e:
             raise ValueError(f"file {file_id} not found")
+        
+    async def get_function_snippet(
+        file_id: Annotated[int, "The ID of the file to get function snippet for"],
+        function_name: Annotated[str, "The name of the function to get snippet for"]
+        ) -> Dict[str, Any]:
+        """取得指定檔案中特定函數的呼叫片段
+        
+        根據檔案ID和函數名稱，從 fcalls 中取得該函數內部的所有方法呼叫資訊。
+        返回格式為包含 file_id 和 calls 的字典，其中 calls 為包含 method 和 expr 的字典列表。
+        
+        參數：
+        - file_id: 檔案ID
+        - function_name: 函數名稱
+        
+        返回：
+        - Dict[str, Any]: 包含 file_id 和 calls 的字典
+          - file_id: 檔案ID
+          - path: 檔案位置
+          - calls: List[Dict[str, str]] 包含 method 和 expr 的呼叫片段列表
+        
+        使用場景：
+        - 分析特定函數內部的方法呼叫
+        - 追蹤函數如何使用其他服務或函數
+        - 了解函數的實作細節
+        
+        範例：
+        input: file_id=241, function_name="GetByNameKeywordAsync"
+        output: {
+            "file_id": 241,
+            "calls": [{"method": "GetByNameKeywordAsync", "expr": "_CommunityEsRepository.GetByNameKeywordAsync(communityAliasNamePinyinKeyword)"}]
+        }
+        """
+        snapshot_data = snapshot_manager.load_file(run_id, dependency_cache_file)
+        if not snapshot_data or "files" not in snapshot_data:
+            return {}
+        
+        file_id_str = str(file_id)
+        if file_id_str not in snapshot_data["files"]:
+            return {}
+        
+        file_info = snapshot_data["files"][file_id_str]
+        
+        # 檢查檔案是否有 fcalls 資訊
+        if "fcalls" not in file_info or not file_info["fcalls"]:
+            return {}
+        
+        # 檢查指定的函數是否存在於 fcalls 中
+        if function_name not in file_info["fcalls"]:
+            return {}
+        
+        # 返回該函數的呼叫片段
+        function_calls = file_info["fcalls"][function_name]
+        if isinstance(function_calls, list):
+            return {
+                "file_id": file_id, 
+                "path": file_info.get("path", ""),
+                "calls": function_calls
+            }
+        else:
+            return {}
+                
+    
     
     # Create FunctionTool instances with strict=True
     get_deps_to_tool = FunctionTool(
@@ -131,11 +234,25 @@ async def create_dependency_tools(
         strict=True
     )
     
+    get_function_snippet_tool = FunctionTool(
+        get_function_snippet,
+        description="取得指定檔案中特定函數的呼叫片段，用於分析函數內部的方法呼叫",
+        strict=True
+    )
+    
+    get_deps_by_file_id_and_expr_tool = FunctionTool(
+        get_deps_by_file_id_and_expr,
+        description="根據檔案ID和表達式查詢相依性目標檔案，用於精確追蹤特定方法呼叫的流向",
+        strict=True
+    )
+    
     # Return dictionary of tool functions
     tools = {
         "get_deps_to": get_deps_to_tool,
         "get_deps_from": get_deps_from_tool,
         "get_file": get_file_tool,
+        "get_function_snippet": get_function_snippet_tool,
+        "get_deps_by_file_id_and_expr": get_deps_by_file_id_and_expr_tool,
     }
     
     return tools
