@@ -2,27 +2,25 @@ from typing import List, Dict, Any
 import json
 from src.model.snapshot_manager import SnapshotManager
 from src.utils.extract_json_response import extract_json_response
-
-
+from autogen_agentchat.ui import Console
+from src.agent.entry_point_detector import entry_point_detector
+from src.agent.entry_point_detector import entry_point_detector
 class EntryPointExtractor:
     """從 dependence data 中提取 entry points，支援手動指定和 AI 分析兩種模式"""
     
     def __init__(self, snapshot_manager: SnapshotManager):
         self.snapshot_manager = snapshot_manager
     
-    def extract_manually(self, file_deps: Dict[str, Any], appoint_entries: List[str], 
-                        run_id: str, entry_point_cache_file: str) -> int:
+    def extract_manually(self, file_deps: Dict[str, Any], appoint_entries: List[str]) -> Dict[str, Any]:
         """
-        從 dependence data 中提取指定的 entry points 並儲存
+        從 dependence data 中提取指定的 entry points
         
         Args:
             file_deps: dependence cache 的數據
             appoint_entries: 指定的入口點函數名稱列表
-            run_id: 運行 ID
-            entry_point_cache_file: entry point cache 檔案名
             
         Returns:
-            提取到的 entry points 數量
+            包含 entries 的字典
         """
         entries = []
         files = file_deps.get("files", {})
@@ -44,38 +42,25 @@ class EntryPointExtractor:
                     break
         
         entry_points_data = {"entries": entries}
-        self.snapshot_manager.save_file(run_id, entry_point_cache_file, entry_points_data)
-        
-        return len(entries)
+        return entry_points_data
     
-    async def extract_with_agent(self, client, file_deps: Dict[str, Any], 
-                                run_id: str, entry_point_cache_file: str) -> int:
+    async def extract_with_agent(self, client, file_deps: Dict[str, Any]) -> Dict[str, Any]:
         """
-        使用 AI agent 分析 entry points 並儲存
+        使用 AI agent 分析 entry points
         
         Args:
             client: OpenAI client 實例
             file_deps: dependence cache 的數據  
-            run_id: 運行 ID
-            entry_point_cache_file: entry point cache 檔案名
             
         Returns:
-            提取到的 entry points 數量
+            包含 entries 的字典，如果失敗則返回 None
         """
-        from autogen_agentchat.ui import Console
-        from src.agent.entry_point_detector import entry_point_detector
         
-        # 創建 detector agent
-        detector_agent = await entry_point_detector(
-            client=client, 
-            run_id=run_id, 
-            snapshot_manager=self.snapshot_manager
-        )
+        detector_agent = await entry_point_detector(client=client)
         
-        # 準備 prompt 數據
         detect_prompt = {
-            "files": file_deps["files"],
-            "deps": file_deps["deps"]
+            "dir_structure": {str(file_id): file_info["path"] for file_id, file_info in file_deps["files"].items()},
+            "files": file_deps["files"]
         }
         
         # 執行 AI 分析
@@ -90,16 +75,13 @@ class EntryPointExtractor:
         
         if not final_content:
             print("警告：無法從 AI 回應中提取有效的 JSON")
-            return 0
+            return None
         
         try:
-            # 解析並儲存結果
+            # 解析結果
             entry_points_data = json.loads(final_content)
-            self.snapshot_manager.save_file(run_id, entry_point_cache_file, entry_points_data)
-            
-            entries_count = len(entry_points_data.get("entries", []))
-            return entries_count
+            return entry_points_data
             
         except json.JSONDecodeError as e:
             print(f"解析 AI 回應時發生錯誤: {e}")
-            return 0
+            return None

@@ -1,125 +1,77 @@
 from autogen_agentchat.agents import AssistantAgent
 from autogen_core.models import ChatCompletionClient
 
-from src.agent.function_tool.dependency_tools import create_dependency_tools
-from src.model.snapshot_manager import SnapshotManager
-
-async def entry_point_detector(
-  client: ChatCompletionClient, 
-  snapshot_manager: SnapshotManager, 
-  run_id: str) -> AssistantAgent:
-    dependency_tools = await create_dependency_tools(snapshot_manager, run_id)
-    
-    agent_tools = [
-        dependency_tools["get_file"],
-    ]
-    
+async def entry_point_detector(client: ChatCompletionClient) -> AssistantAgent:
     return AssistantAgent(
-        "entry_point_detector_B",
+        "entry_point_detector",
         model_client=client,
-        tools=agent_tools,
-        max_tool_iterations=30,  # Allow multiple tool calls and analysis rounds
         tool_call_summary_format="json",
         reflect_on_tool_use=True,
         system_message=("""
-<role>
-You are an entry-point detection assistant for .NET/C# projects. Your job is to analyze a provided mapping of file_id -> file_path, prioritize likely entry-point files by path heuristics, verify using only the provided metadata tool (get_file), and output ONLY a validated JSON list of confirmed entry points.
-</role>
+你是一個用於 .NET/C# 專案的**入口點偵測助理**。你的任務是分析所提供的檔案路徑映射及程式碼元資料，根據路徑啟發式規則（path heuristics）和元資料中的內容來判斷可能的入口點檔案，並最終以一個有效的 JSON 列表格式輸出所有已確認的入口點。
 
-<constraints>
-- ALWAYS call get_file(file_id) first to read file metadata (path, cls, funcs, calls, fcalls, implemented interfaces, base classes, attributes if present in metadata).
-- DO NOT call get_file_content or any tool that returns raw source code. get_file_content is NOT available for this run.
-- Do NOT guess or hallucinate. If you cannot confirm using metadata alone, DO NOT include the file.
-- Output MUST BE valid JSON only, matching the exact output schema below. Absolutely no other text, logs, comments, or keys.
-</constraints>
+### **輸入格式**
 
-<input_format>
-You will be given a JSON object containing "dir_structure": { "<file_id>": "<path>", ... }.
-Use path heuristics to prioritize candidates, but verification must rely exclusively on get_file metadata.
-</input_format>
+你會收到一個包含兩個 JSON 物件的輸入：
 
-<path_heuristics>
-Prioritize files whose paths or names match:
-- Controllers: "Controller" in filename or path
-- Services: "Service" in filename
-- Handlers: "Handler" in filename
-- Jobs/Workers: "Job" or "Worker"
-- Hubs: "Hub" (SignalR)
-Also prioritize folders like Controllers/, Api/, WebApi/, Application/Controllers.
-</path_heuristics>
+1.  `"dir_structure": { "<file_id>": "<path>", ... }`：檔案路徑的映射。
+2.  `"files": { "<file_id>": { "path": ..., "func": [ ... ], "cls": [ ... ], "fcalls": { ... }, ... }, ... }`：每個檔案的元資料摘要。
 
-<verification_steps>
-For each candidate file (in priority order):
-1. Call get_file(file_id).
-   - Inspect returned metadata fields: path, cls (classes), funcs (functions), calls, fcalls, listed interfaces, base classes, and any attribute metadata present.
-2. Confirm an entry point ONLY when metadata contains explicit evidence, such as:
-   - Controller evidence: class name ends with "Controller" or derives from ControllerBase/Controller AND metadata lists public methods and/or attributes like Http methods in metadata.
-   - Background service evidence: metadata indicates implemented interfaces (IHostedService) or base class BackgroundService, or listed methods named ExecuteAsync / StartAsync.
-   - Handler evidence: class name contains "Handler" or metadata shows implemented handler interfaces or functions named Handle/Consume.
-   - Hub evidence: metadata shows inheritance from Hub and lists public member methods.
-3. If metadata is ambiguous or lacks explicit indicators, DO NOT include the file (skip it).
-4. On tool error (e.g., get_file raises), skip the file and continue; do not fabricate entries.
-</verification_steps>
+### **偵測與判斷流程**
 
-<entry_indicators>
-HTTP Controller:
-  - Class name ends with "Controller" OR derives from ControllerBase/Controller.
-  - Metadata includes method listings and attributes (e.g., Http attribute metadata) that indicate endpoints.
+1.  **啟發式優先排序**：首先，根據以下路徑或檔案名模式來優先選擇候選檔案：
 
-Background Service / Job:
-  - Metadata shows implemented interfaces IHostedService or base class BackgroundService OR includes ExecuteAsync / StartAsync in funcs.
+      * **Controller**：檔案名或路徑中包含 "Controller" 的檔案。
+      * **Service**：檔案名中包含 "Service" 的檔案。
+      * **Handler**：檔案名中包含 "Handler" 的檔案。
+      * **Jobs/Workers**：檔案名中包含 "Job" 或 "Worker" 的檔案。
+      * 優先考慮類似 `Controllers/`, `Api/`, `WebApi/`, `Application/Controllers` 的資料夾路徑。
 
-Event Handler:
-  - Metadata shows "Handler" in class name or implemented handler interfaces, or funcs named Handle/Consume.
+2.  **綜合判斷**：對於每個候選檔案，你必須綜合分析其**檔案路徑**和**元資料摘要**來進行最終判斷。明確的判斷依據包括：
 
-SignalR Hub:
-  - Metadata shows inheritance from Hub and lists public methods.
-</entry_indicators>
+      * **HTTP Controller**：
+          * **路徑**：檔案路徑或名稱包含 "Controller"。
+          * **元資料**：`cls` 欄位中列出的類別名稱以 **`Controller`** 結尾，且 `func` 欄位中包含像 `CreateAsync`、`GetAsync`、`UpdateAsync`、`DeleteAsync` 等常見的 RESTful 操作方法。`fcalls` 中呼叫了 Repository 或 Service 相關的方法也能作為佐證。
+      * **後台服務/作業**：
+          * **路徑**：檔案路徑或名稱包含 "Service"、"Job" 或 "Worker"。
+          * **元資料**：`func` 欄位中包含 `ExecuteAsync` 或 `StartAsync` 等方法，或者元資料表明其繼承了 `BackgroundService` 或實作了 `IHostedService`。
+      * **事件處理器**：
+          * **路徑**：檔案路徑或名稱包含 "Handler"。
+          * **元資料**：`cls` 欄位中包含 **`Handler`**，或 `func` 欄位中包含 `Handle` 或 `Consume` 方法。
+      * **SignalR Hub**：
+          * **路徑**：檔案路徑或名稱包含 "Hub"。
+          * **元資料**：元資料中列出的類別名稱以 **`Hub`** 結尾，且 `func` 中包含公共方法。
 
-<output_schema>
-Return ONLY a JSON object matching exactly this schema (no extra text, no extra keys):
+3.  **嚴格判斷**：如果元資料與路徑啟發式規則不一致，或者資訊不足以做出明確判斷，**請勿**將其包含在結果中。
 
+### **輸出規範**
+
+你**只能**返回一個符合以下 JSON 格式的物件，不包含任何額外文字、日誌、註解或額外的鍵。
+
+**JSON 格式範例：**
+
+```json
 {
   "entries": [
     {
+      "entry_id": 1,
       "file_id": 123,
       "component": "UserController",
       "name": "GetUsers",
-      "reason": "HTTP GET endpoint indicated in metadata"
+      "reason": "Class name ends with 'Controller' and metadata lists CRUD-like methods like GetAsync and calls to repository methods.(20 words)"
     }
   ]
 }
+```
 
-Rules:
-- Each entry MUST contain only these four keys: file_id (integer), component (string), name (string), reason (string).
-- Do NOT include path, kind, evidence, confidence, or any other fields.
-- The value of "reason" must be derived from metadata fields returned by get_file (e.g., "class ends with Controller and metadata lists [HttpGet] attribute on method" or "implements IHostedService per metadata").
-- If no confirmed entries are found, return {"entries": []}.
-</output_schema>
+**規則：**
 
-<example>
-Given dir_structure mapping, a valid final output must be exact JSON like:
-
-{
-  "entries": [
-    {
-      "file_id": 0,
-      "component": "ClientController",
-      "name": "GetClients",
-      "reason": "class ends with Controller and metadata lists [HttpGet] attribute"
-    }
-  ]
-}
-
-No additional keys, no extra whitespace lines outside JSON, and no comments.
-</example>
-
-<behavior>
-- Be conservative: prefer high-precision confirmed entries. If metadata does not provide explicit indicators, omit the file.
-- Scan all files provided; process in priority order but don't stop after first matches.
-- Handle tool failures gracefully by skipping affected files.
-- ALWAYS output only the exact JSON per <output_schema> and nothing else.
-</behavior>
+  * `entry_id` 必須是一個從 **1** 開始的遞增序列號。
+  * 每個條目必須只包含 `entry_id` (整數)、`file_id` (整數)、`component` (字串)、`name` (字串)、`reason` (字串) 這五個鍵。
+  * `component` 應為檔案的主要類別名稱（例如：`UserController`）。
+  * `name` 的值應為**函式名稱**（function name）。如果一個檔案有多個入口點函式，則需為每個函式創建一個單獨的條目。
+  * `reason` 的值必須從提供的元資料（`func`, `cls`, `fcalls` 等）中推導而來。
+  * 如果沒有找到已確認的入口點，請返回 `{"entries": []}`。
 """
 ),
     )
