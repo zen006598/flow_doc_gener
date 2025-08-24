@@ -10,7 +10,6 @@ from src.model.snapshot_manager import SnapshotManager
 from src.service.entry_point_extractor import EntryPointExtractor
 from src.service.call_chain_analyzer_service import CallChainAnalyzerService
 from src.service.feature_analyzer_service import FeatureAnalyzerService
-from src.model.feature_analysis_models import SourceCodeFile
 from src.model.call_chain_models import CallChainResult
 from src.utils import remove_empty_arrays, crawl_local_files
 
@@ -117,8 +116,8 @@ async def main():
             await asyncio.sleep(60)
             continue
 
-        # Save call chain result
-        output_filename = f"{component}.{entry_name}.json"
+        # Save call chain result to analyze_result directory
+        output_filename = f"analyze_result/{component}.{entry_name}.json"
         snapshot_manager.save_file(run_id, output_filename, result)
         
         # Sleep before feature analysis (separate AI service call)
@@ -146,7 +145,7 @@ async def main():
             feature_result = await feature_analyzer_service.analyze_feature(entry_name, source_files)
             
             if feature_result and "error" not in feature_result:
-                feature_output_filename = f"{component}.{entry_name}.feature.json"
+                feature_output_filename = f"feature_result/{component}.{entry_name}.feature.json"
                 snapshot_manager.save_file(run_id, feature_output_filename, feature_result)
                 print(f"Feature analysis saved: {feature_output_filename}")
             else:
