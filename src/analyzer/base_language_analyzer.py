@@ -14,13 +14,12 @@ class BaseLanguageAnalyzer(ABC):
         return source_code[node.start_byte:node.end_byte].decode('utf-8').strip()
     
     @abstractmethod
-    def analyze_file(self, file_path: str, content: str) -> Dict[str, Any]:
+    def analyze_file(self, content: str) -> Dict[str, Any]:
         """
         分析單個文件，返回標準格式的結果
         
         Returns:
             {
-                'path': str,
                 'functions': List[str],
                 'classes': List[str], 
                 'calls': List[str] 或 List[Dict] (詳細調用信息)

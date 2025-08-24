@@ -2,26 +2,24 @@ from typing import Dict, List, Any
 from typing_extensions import Annotated
 from autogen_core.tools import FunctionTool
 
-from src.core.config import Config
-from src.model.snapshot_manager import SnapshotManager
+from src.model.dependency_model import DependencyModel
+from src.model.file_functions_map_model import FileFunctionsMapModel
 
 async def create_dependency_tools(
-    snapshot_manager: SnapshotManager, 
     run_id: str
     ) -> Dict[str, FunctionTool]:
     """
-    Create closure-based dependency tools that hide run_id from LLM while providing snapshot access
+    Create closure-based dependency tools using DependencyModel and FileFunctionsMapModel
     
     Args:
-        snapshot_manager: SnapshotManager instance for snapshot operations
-        run_id: The run_id to use for snapshot queries (hidden from LLM)
+        run_id: The run_id to use for model queries (hidden from LLM)
         
     Returns:
         Dictionary of dependency tool functions with run_id pre-bound
     """
     
-    conf = Config()
-    dependency_cache_file = conf.cache_file_name_map["dependence"]
+    dependency_model = DependencyModel(run_id)
+    file_functions_map_model = FileFunctionsMapModel(run_id)
     
     async def get_deps_to(file_id: Annotated[int, "The ID of the file to get dependencies to"]) -> List[Dict[str, Any]]:
         """取得所有指向特定檔案的相依性關係 (向上追蹤)
@@ -31,7 +29,6 @@ async def create_dependency_tools(
         - from: 發起呼叫的檔案ID
         - from_func: 發起呼叫的函數名稱
         - to: 被呼叫的目標檔案ID (即輸入的file_id)
-        - to_func: 被呼叫的目標函數名稱
         - call: 呼叫的詳細資訊 (method, expr)
         
         使用場景：
@@ -40,16 +37,7 @@ async def create_dependency_tools(
         - 追蹤某個工具函數的使用情況
         """
         try:
-            snapshot_data = snapshot_manager.load_file(run_id, dependency_cache_file)
-            if not snapshot_data or "deps" not in snapshot_data:
-                return []
-            
-            result = []
-            for d in snapshot_data["deps"]:
-                if int(d["to"]) == file_id:
-                    result.append(d)
-            
-            return result
+            return dependency_model.find_deps_to(file_id)
         except Exception as e:
             return []
     
@@ -68,16 +56,7 @@ async def create_dependency_tools(
         - 查看某個Service依賴哪些Repository
         """
         try:
-            snapshot_data = snapshot_manager.load_file(run_id, dependency_cache_file)
-            if not snapshot_data or "deps" not in snapshot_data:
-                return []
-            
-            result = []
-            for d in snapshot_data["deps"]:
-                if int(d["from"]) == file_id:
-                    result.append(d)
-            
-            return result
+            return dependency_model.find_deps_from(file_id)
         except Exception as e:
             return []
         
@@ -107,19 +86,8 @@ async def create_dependency_tools(
         output: [527, 570]
         """
         try:
-            snapshot_data = snapshot_manager.load_file(run_id, dependency_cache_file)
-            if not snapshot_data or "deps" not in snapshot_data:
-                return []
-            
-            result_set = set()
-            for d in snapshot_data["deps"]:
-                if int(d["from"]) == file_id and "call" in d:
-                    call_info = d["call"]
-                    if isinstance(call_info, dict) and "expr" in call_info:
-                        if call_info["expr"] == expr:
-                            result_set.add(int(d["to"]))
-            
-            return list(result_set)
+            deps = dependency_model.find_deps_by_file_and_expr(file_id, expr)
+            return [dep["to"] for dep in deps]
         except Exception as e:
             return []
     
@@ -141,15 +109,10 @@ async def create_dependency_tools(
         - 判斷檔案在架構中的角色和層級
         """
         try:
-            snapshot_data = snapshot_manager.load_file(run_id, dependency_cache_file)
-            if not snapshot_data or "files" not in snapshot_data:
+            file_info = file_functions_map_model.find_by_file_id(file_id)
+            if not file_info:
                 raise ValueError(f"file {file_id} not found")
-            
-            file_id_str = str(file_id)
-            if file_id_str not in snapshot_data["files"]:
-                raise ValueError(f"file {file_id} not found")
-            
-            return snapshot_data["files"][file_id_str]
+            return file_info
         except Exception as e:
             raise ValueError(f"file {file_id} not found")
         
@@ -184,33 +147,20 @@ async def create_dependency_tools(
             "calls": [{"method": "GetByNameKeywordAsync", "expr": "_CommunityEsRepository.GetByNameKeywordAsync(communityAliasNamePinyinKeyword)"}]
         }
         """
-        snapshot_data = snapshot_manager.load_file(run_id, dependency_cache_file)
-        if not snapshot_data or "files" not in snapshot_data:
+        try:
+            file_info = file_functions_map_model.find_by_file_id(file_id)
+            if not file_info:
+                return {}
+            
+            function_calls = file_functions_map_model.get_function_calls(file_id, function_name)
+            if function_calls:
+                return {
+                    "file_id": file_id,
+                    "path": file_info.get("path", ""),
+                    "calls": function_calls
+                }
             return {}
-        
-        file_id_str = str(file_id)
-        if file_id_str not in snapshot_data["files"]:
-            return {}
-        
-        file_info = snapshot_data["files"][file_id_str]
-        
-        # 檢查檔案是否有 fcalls 資訊
-        if "fcalls" not in file_info or not file_info["fcalls"]:
-            return {}
-        
-        # 檢查指定的函數是否存在於 fcalls 中
-        if function_name not in file_info["fcalls"]:
-            return {}
-        
-        # 返回該函數的呼叫片段
-        function_calls = file_info["fcalls"][function_name]
-        if isinstance(function_calls, list):
-            return {
-                "file_id": file_id, 
-                "path": file_info.get("path", ""),
-                "calls": function_calls
-            }
-        else:
+        except Exception as e:
             return {}
                 
     

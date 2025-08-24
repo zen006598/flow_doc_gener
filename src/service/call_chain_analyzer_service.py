@@ -10,7 +10,6 @@ from autogen_agentchat.ui import Console
 from autogen_agentchat.messages import StructuredMessage, TextMessage
 
 from src.core.config import Config
-from src.model.snapshot_manager import SnapshotManager
 from src.agent.function_tool.dependency_tools import create_dependency_tools
 from src.agent.function_tool.source_code_tools import create_source_code_tools
 from src.model.call_chain_models import CallChainResult, EntryPoint
@@ -67,10 +66,8 @@ class CallChainAnalyzerService:
                 parallel_tool_calls=False,
             )
             
-            # Initialize tools
-            snapshot_manager = SnapshotManager(self.config.cache_path)
-            self.dependency_tools = await create_dependency_tools(snapshot_manager, self.run_id)
-            self.source_code_tools = await create_source_code_tools(snapshot_manager, self.run_id)
+            self.dependency_tools = await create_dependency_tools(self.run_id)
+            self.source_code_tools = await create_source_code_tools(self.run_id)
     
     def _create_finisher_agent(self, entry_name: str) -> AssistantAgent:
         """Create the finisher agent"""

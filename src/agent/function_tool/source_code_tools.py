@@ -1,50 +1,36 @@
-from typing import Dict, Callable
+import json
+from typing import Dict
 from typing_extensions import Annotated
 from autogen_core.tools import FunctionTool
-from autogen_core import CancellationToken
+from src.model.source_code_model import SourceCodeModel
 
-from src.core.config import Config
-from src.model.snapshot_manager import SnapshotManager
 
 async def create_source_code_tools(
-    snapshot_manager: SnapshotManager, 
     run_id: str
     ) -> Dict[str, FunctionTool]:
     """
-    Create closure-based tools that hide run_id from LLM while providing snapshot access
+    Create closure-based tools that hide run_id from LLM while providing SourceCodeModel access
     
     Args:
-        file_manager: FileManager instance for snapshot operations
-        run_id: The run_id to use for snapshot queries (hidden from LLM)
+        run_id: The run_id to use for SourceCodeModel queries (hidden from LLM)
         
     Returns:
         Dictionary of tool functions with run_id pre-bound
     """
     
-    conf = Config()
-    source_code_cache_file = conf.cache_file_name_map["source_code"]
+    source_code_model = SourceCodeModel(run_id)
     
     async def get_file_content(file_id: Annotated[int, "The ID of the file to retrieve"]) -> str:
         """Get content of a specific file by file_id"""
         try:
-            snapshot_data = snapshot_manager.load_file(run_id, source_code_cache_file)
-            if not snapshot_data:
-                return ""
-            
-            contents = snapshot_data.get("contents", {})
-            return contents.get(str(file_id), "")
+            return source_code_model.get_content_by_id(file_id)
         except Exception as e:
             return f"Error retrieving file {file_id}: {str(e)}"
     
     async def list_dir_structure() -> str:
         """List all files in the snapshot with their IDs and paths as JSON string"""
         try:
-            snapshot_data = snapshot_manager.load_file(run_id, source_code_cache_file)
-            if not snapshot_data:
-                return "{}"
-            
-            dir_structure = snapshot_data.get("dir_structure", {})
-            import json
+            dir_structure = source_code_model.list_structure()
             return json.dumps(dir_structure)
         except Exception as e:
             return f"Error listing files: {str(e)}"

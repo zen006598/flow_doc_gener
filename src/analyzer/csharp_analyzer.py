@@ -253,7 +253,7 @@ class CSharpAnalyzer(BaseLanguageAnalyzer):
         
         return sorted(list(symbols))
     
-    def analyze_file(self, file_path: str, content: str) -> Dict[str, Any]:
+    def analyze_file(self, content: str) -> Dict[str, Any]:
         code_bytes = content.encode("utf-8")
         tree = self.parser.parse(code_bytes)
         
@@ -273,7 +273,6 @@ class CSharpAnalyzer(BaseLanguageAnalyzer):
                     all_calls.append(call['method'])
         
         return {
-            'path': file_path,
             'func': functions,
             'cls': classes,
             'interfaces': interfaces,

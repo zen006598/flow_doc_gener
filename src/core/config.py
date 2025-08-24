@@ -7,9 +7,9 @@ class Config():
         self.default_model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
         self.cache_path = os.getenv("CACHE_PATH", "cache")
         self.cache_file_name_map = {
-            "source_code": "src.json",
-            "dependence": "dep.json",
-            "entry_point": "entries.json",
+            "source_code": "src",
+            "dependence": "dep",
+            "entry_point": "entries",
         }
         
         self.api_key_map = {

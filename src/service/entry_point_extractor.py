@@ -1,48 +1,46 @@
 from typing import List, Dict, Any
 import json
-from src.model.snapshot_manager import SnapshotManager
+from src.model.file_functions_map_model import FileFunctionsMapModel
 from src.utils.extract_json_response import extract_json_response
 from autogen_agentchat.ui import Console
 from src.agent.entry_point_detector import entry_point_detector
-from src.agent.entry_point_detector import entry_point_detector
+
 class EntryPointExtractor:
-    """從 dependence data 中提取 entry points，支援手動指定和 AI 分析兩種模式"""
+    """從 FileFunctionsMapModel 中提取 entry points，支援手動指定和 AI 分析兩種模式"""
     
-    def __init__(self, snapshot_manager: SnapshotManager):
-        self.snapshot_manager = snapshot_manager
+    def __init__(self, file_functions_map_model: FileFunctionsMapModel):
+        self.file_functions_map_model = file_functions_map_model
     
-    def extract_manually(self, file_deps: Dict[str, Any], appoint_entries: List[str]) -> Dict[str, Any]:
+    def extract_manually(self, appoint_entries: List[str]):
         """
-        從 dependence data 中提取指定的 entry points
+        從 FileFunctionsMapModel 中提取指定的 entry points
         
         Args:
-            file_deps: dependence cache 的數據
             appoint_entries: 指定的入口點函數名稱列表
             
         Returns:
             包含 entries 的字典
         """
         entries = []
-        files = file_deps.get("files", {})
         
-        for entry_name in appoint_entries:
-            for file_id, file_info in files.items():
-                if entry_name in file_info.get("func", []):
-                    # 從 cls 陣列取得 component 名稱，如果為空則從路徑解析
-                    cls_list = file_info.get("cls", [])
-                    component = cls_list[0] if cls_list else file_info.get("path", "").split("/")[-1].replace(".cs", "")
-                    
-                    entry = {
-                        "file_id": int(file_id),
-                        "component": component,
-                        "name": entry_name,
-                        "reason": "manually_appointed"
-                    }
-                    entries.append(entry)
-                    break
+        for entry_spec in appoint_entries:
+            # 解析 "class_name.function_name" 格式
+            class_name, function_name = entry_spec.split(".", 1)
+            
+            matching_files = self.file_functions_map_model.find_by_class_and_function(
+                class_name, function_name
+            )
+            
+            for file_info in matching_files:
+                entry = {
+                    "file_id": file_info.get("file_id"),
+                    "component": class_name,
+                    "name": function_name,
+                    "reason": "manually_appointed"
+                }
+                entries.append(entry)
         
-        entry_points_data = {"entries": entries}
-        return entry_points_data
+        return entries
     
     async def extract_with_agent(self, client, file_deps: Dict[str, Any]) -> Dict[str, Any]:
         """
