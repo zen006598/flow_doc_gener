@@ -1,13 +1,12 @@
-from typing import Dict, List, Any
+from typing import Any
 from typing_extensions import Annotated
 from autogen_core.tools import FunctionTool
 
-from src.model.dependency_model import DependencyModel
-from src.model.file_functions_map_model import FileFunctionsMapModel
+from src.model import DependencyModel, FuncMapModel
 
 async def create_dependency_tools(
     run_id: str
-    ) -> Dict[str, FunctionTool]:
+    ) -> dict[str, FunctionTool]:
     """
     Create closure-based dependency tools using DependencyModel and FileFunctionsMapModel
     
@@ -19,190 +18,141 @@ async def create_dependency_tools(
     """
     
     dependency_model = DependencyModel(run_id)
-    file_functions_map_model = FileFunctionsMapModel(run_id)
-    
-    async def get_deps_to(file_id: Annotated[int, "The ID of the file to get dependencies to"]) -> List[Dict[str, Any]]:
-        """取得所有指向特定檔案的相依性關係 (向上追蹤)
+    func_map_model = FuncMapModel(run_id)
         
-        找出誰呼叫了指定檔案中的函數，用於分析該檔案的使用者或呼叫者。
-        每個相依性項目包含：
-        - from: 發起呼叫的檔案ID
-        - from_func: 發起呼叫的函數名稱
-        - to: 被呼叫的目標檔案ID (即輸入的file_id)
-        - call: 呼叫的詳細資訊 (method, expr)
-        
-        使用場景：
-        - 找出某個Service被哪些Controller使用
-        - 分析某個Repository被哪些Service呼叫
-        - 追蹤某個工具函數的使用情況
-        """
-        try:
-            return dependency_model.find_deps_to(file_id)
-        except Exception as e:
-            return []
-    
-    async def get_deps_from(file_id: Annotated[int, "The ID of the file to get dependencies from"]) -> List[Dict[str, Any]]:
-        """取得所有從特定檔案發起的相依性關係 (向下追蹤)
-        
-        找出指定檔案中的函數呼叫了哪些其他函數，用於分析該檔案的對外相依性。
-        每個相依性項目包含：
-        - from: 發起呼叫的檔案ID (即輸入的file_id)
-        - from_func: 發起呼叫的函數名稱
-        - to: 被呼叫的目標檔案ID
-        - call: 被呼叫的目標函數的詳細資訊 (method, expr)
-        
-        使用場景：
-        - 分析某個Controller呼叫了哪些Service
-        - 查看某個Service依賴哪些Repository
-        """
-        try:
-            return dependency_model.find_deps_from(file_id)
-        except Exception as e:
-            return []
-        
-    async def get_deps_by_file_id_and_expr(
-        file_id: Annotated[int, "The ID of the file to get dependencies from"], 
+    async def find_caller_by_dep(
+        file_id: Annotated[int, "The ID of the file to get dependencies from"],
+        component: Annotated[str, "The name of the caller component"],
         expr: Annotated[str, "The expression to match in the call"]
-    ) -> List[int]:
-        """根據檔案ID和表達式查詢相依性目標檔案
+    ) -> list[dict[str, Any]]:
+        """Find dependency target file details by file ID, component and expression
         
-        找出指定檔案中呼叫特定表達式的所有目標檔案ID。
-        用於精確追蹤特定方法呼叫的流向。
+        Finds all target files and their detailed information for calls to specific expressions
+        within a specific component of the specified file. Used for precise tracking of 
+        specific method call flows and complete information of target entities.
         
-        參數：
-        - file_id: 發起呼叫的檔案ID
-        - expr: 要匹配的呼叫表達式
+        Args:
+        - file_id: The file ID where the call originates (caller's file)
+        - component: The name of the calling component (caller's class/component)
+        - expr: The call expression to match (specific method call statement)
         
-        返回：
-        - List[int]: 被呼叫的目標檔案ID列表
+        Returns:
+        - List[Dict[str, Any]]: List of called target file details, each containing:
+          - file_id: Target file ID
+          - type: Target entity type (class, interface, etc.)
+          - component: Target component name
+          - method: Called method name
         
-        使用場景：
-        - 追蹤特定方法呼叫的流向
-        - 分析某個特定呼叫會影響哪些檔案
-        - 精確定位相依性關係
+        Use cases:
+        - Track complete flow of specific method calls
+        - Analyze which files and components are affected by a specific call
+        - Get detailed call information of target components
         
-        範例：
-        input: file_id=209, expr="_PageAgentService.PageAgent(list.TotalCount.ToInt(),parameter.Ps,parameter.Pg)"
-        output: [527, 570]
+        Example:
+        input: file_id=209, component="Controller", expr="service.GetData()"
+        output: [
+            {
+                "file_id": 527,
+                "type": "class",
+                "component": "DataService",
+                "method": "GetData"
+            }
+        ]
         """
         try:
-            deps = dependency_model.find_deps_by_file_and_expr(file_id, expr)
-            return [dep["to"] for dep in deps]
+            deps = dependency_model.find_callee_by_caller(file_id, component, expr)
+            res = []
+            
+            for dep in deps:
+                func_map = func_map_model.get_by_component_and_function(
+                    dep.callee_entity, dep.call.method, dep.callee_file_if)
+                
+                if not func_map:
+                    continue
+                
+                res.append({
+                    "file_id": func_map.file_id,
+                    "type": func_map.type,
+                    "component": func_map.ciname,  # 使用被呼叫者的組件名
+                    "method": dep.call.method,       # 被呼叫的方法名
+                })
+                
+            return res
+        
         except Exception as e:
             return []
-    
-    async def get_file(file_id: Annotated[int, "The ID of the file to get information for"]) -> Dict[str, Any]:
-        """取得檔案的詳細資訊
         
-        根據檔案ID獲取完整的檔案資訊，包含路徑、定義的類別和函數、以及呼叫關係。
-        返回的檔案資訊包含：
-        - path: 檔案的完整路徑，用於判斷檔案類型和架構層級
-        - cls: 該檔案中定義的類別列表，用於識別設計模式
-        - funcs: 該檔案中定義的函數列表，用於識別進入點
-        - calls: 該檔案中呼叫到的方法列表，簡化版用於快速檢查
-        - fcalls: 詳細的函數呼叫資訊，包含每個函數內部的呼叫細節
+    async def get_func_map(
+        fid: Annotated[int, "The ID of the file to get function snippet for"],
+        component: Annotated[str, "The name of the function component"],
+        func: Annotated[str, "The name of the function to get snippet for"]
+        ) -> dict[str, Any]:
+        """取得指定組件中特定函數的呼叫片段
         
-        使用場景：
-        - 分析檔案類型 (Controller, Service, Repository)
-        - 識別進入點函數 (Main, Execute, Handle)
-        - 了解檔案的內部結構和對外呼叫
-        - 判斷檔案在架構中的角色和層級
-        """
-        try:
-            file_info = file_functions_map_model.find_by_file_id(file_id)
-            if not file_info:
-                raise ValueError(f"file {file_id} not found")
-            return file_info
-        except Exception as e:
-            raise ValueError(f"file {file_id} not found")
-        
-    async def get_function_snippet(
-        file_id: Annotated[int, "The ID of the file to get function snippet for"],
-        function_name: Annotated[str, "The name of the function to get snippet for"]
-        ) -> Dict[str, Any]:
-        """取得指定檔案中特定函數的呼叫片段
-        
-        根據檔案ID和函數名稱，從 fcalls 中取得該函數內部的所有方法呼叫資訊。
-        返回格式為包含 file_id 和 calls 的字典，其中 calls 為包含 method 和 expr 的字典列表。
+        根據組件名稱和函數名稱，從 fcalls 中取得該函數內部的所有方法呼叫資訊。
+        返回格式為包含 file_id、component、function 和 calls 的字典。
         
         參數：
-        - file_id: 檔案ID
-        - function_name: 函數名稱
+        - fid: 檔案ID
+        - component: 組件名稱（對應 FunctionAnalysisEntity.ciname）
+        - func: 函數名
         
         返回：
-        - Dict[str, Any]: 包含 file_id 和 calls 的字典
-          - file_id: 檔案ID
-          - path: 檔案位置
-          - calls: List[Dict[str, str]] 包含 method 和 expr 的呼叫片段列表
+        - Dict[str, Any]: 包含函數呼叫詳細資訊的字典
+        - file_id: 檔案ID
+        - path: 檔案位置
+        - component: 組件名
+        - type: 實體類型
+        - calls: List[Dict[str, str]] 包含 method 和 expr 的呼叫片段列表
         
         使用場景：
-        - 分析特定函數內部的方法呼叫
+        - 分析特定組件中特定函數的內部方法呼叫
         - 追蹤函數如何使用其他服務或函數
-        - 了解函數的實作細節
         
         範例：
-        input: file_id=241, function_name="GetByNameKeywordAsync"
+        input: file_id=241, component_name="UserController", function_name="GetUser"
         output: {
             "file_id": 241,
-            "calls": [{"method": "GetByNameKeywordAsync", "expr": "_CommunityEsRepository.GetByNameKeywordAsync(communityAliasNamePinyinKeyword)"}]
+            "path": "src/Controllers/UserController.cs",
+            "component": "UserController",
+            "type": "class",
+            "calls": [{"method": "FindByIdAsync", "expr": "userRepository.FindByIdAsync(id)"}]
         }
         """
         try:
-            file_info = file_functions_map_model.find_by_file_id(file_id)
-            if not file_info:
+            entity = func_map_model.get_by_component_and_function(
+                component, func, fid)
+            
+            if not entity:
                 return {}
             
-            function_calls = file_functions_map_model.get_function_calls(file_id, function_name)
-            if function_calls:
-                return {
-                    "file_id": file_id,
-                    "path": file_info.get("path", ""),
-                    "calls": function_calls
-                }
-            return {}
+            calls = entity.fcalls.get(func, []) if entity.fcalls else []
+
+            return {
+                "file_id": entity.file_id,
+                "path": entity.path,
+                "component": entity.ciname,
+                "type": entity.type,
+                "calls": [{"method": call.method, "expr": call.expr} for call in calls]
+            }
         except Exception as e:
             return {}
-                
     
-    
-    # Create FunctionTool instances with strict=True
-    get_deps_to_tool = FunctionTool(
-        get_deps_to,
-        description="向上追蹤相依性：找出所有呼叫指定檔案的其他檔案和函數，用於分析誰在使用這個檔案",
-        strict=True
-    )
-    
-    get_deps_from_tool = FunctionTool(
-        get_deps_from,
-        description="向下追蹤相依性：找出指定檔案呼叫的所有其他檔案和函數，用於分析這個檔案的對外相依性",
-        strict=True
-    )
-    
-    get_file_tool = FunctionTool(
-        get_file,
-        description="取得檔案資訊：包含路徑、定義的類別函數、呼叫關係等，用於分析檔案類型和架構角色",
-        strict=True
-    )
-    
-    get_function_snippet_tool = FunctionTool(
-        get_function_snippet,
+    get_func_map_tool = FunctionTool(
+        get_func_map,
         description="取得指定檔案中特定函數的呼叫片段，用於分析函數內部的方法呼叫",
         strict=True
     )
     
-    get_deps_by_file_id_and_expr_tool = FunctionTool(
-        get_deps_by_file_id_and_expr,
-        description="根據檔案ID和表達式查詢相依性目標檔案，用於精確追蹤特定方法呼叫的流向",
+    find_caller_by_dep_tool = FunctionTool(
+        find_caller_by_dep,
+        description="根據檔案ID和表達式查詢可能的相依性組件",
         strict=True
     )
     
-    # Return dictionary of tool functions
     tools = {
-        "get_deps_to": get_deps_to_tool,
-        "get_deps_from": get_deps_from_tool,
-        "get_file": get_file_tool,
-        "get_function_snippet": get_function_snippet_tool,
-        "get_deps_by_file_id_and_expr": get_deps_by_file_id_and_expr_tool,
+        "get_func_map": get_func_map_tool,
+        "find_caller_by_dep": find_caller_by_dep_tool,
     }
     
     return tools

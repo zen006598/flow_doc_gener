@@ -1,6 +1,7 @@
 import os
-from typing import List
 from tinydb import TinyDB, Query
+
+from src.entity import DependencyEntity
 
 
 class DependencyModel:
@@ -12,26 +13,18 @@ class DependencyModel:
     def has_data(self) -> bool:
         return len(self.db) > 0
     
-    def all(self):
-        """Get all dependency records"""
-        return self.db.all()
-    
-    def find_deps_to(self, file_id: int) -> List[dict]:
-        """Find all dependencies pointing to this file (who calls this file)"""
-        Dep = Query()
-        return self.db.search(Dep['to'] == file_id)
-    
-    def find_deps_from(self, file_id: int) -> List[dict]:
-        """Find all dependencies from this file (what this file calls)"""
-        Dep = Query()
-        return self.db.search(Dep['from'] == file_id)
-    
-    def find_deps_by_file_and_expr(self, file_id: int, expr: str) -> List[dict]:
+    def find_callee_by_caller(self, file_id: int, component: str, expr: str) -> list[DependencyEntity]:
         """Find dependencies by file ID and expression"""
         Dep = Query()
-        return self.db.search(
-            (Dep['from'] == file_id) & (Dep['call']['expr'] == expr)
+        results = self.db.search(
+            (Dep['caller_file_id'] == file_id )&
+            (Dep['caller_entity'] == component) &
+            (Dep['call']['expr'] == expr)
         )
+        
+        return [DependencyEntity(**r) for r in results]
+
+    def batch_insert(self, deps_data: list[DependencyEntity]):
+        """Insert multiple dependency entities at once"""
+        self.db.insert_multiple([dep.model_dump() for dep in deps_data])
     
-    def batch_insert(self, deps_data):
-        self.db.insert_multiple(deps_data)

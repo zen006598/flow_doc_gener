@@ -54,7 +54,7 @@ class CallChain(BaseModel):
     confidence: float = Field(default=0.0, description="Confidence score")
 
 
-class FeatureAnalysis(BaseModel):
+class FeatureAnalysisEntity(BaseModel):
     entry_point_name: str = Field(..., description="Entry point function name")
     http_url: Optional[str] = Field(None, description="HTTP URL endpoint")
     http_method: Optional[HttpMethod] = Field(None, description="HTTP method")
@@ -65,9 +65,3 @@ class FeatureAnalysis(BaseModel):
     table_write: List[str] = Field(default_factory=list, description="Tables written")
     call_chains: List[CallChain] = Field(default_factory=list, description="Call chain information")
     summary: str = Field(default="", description="Summary of the feature")
-
-
-class SourceCodeFile(BaseModel):
-    file_id: int = Field(..., description="File ID")
-    path: str = Field(..., description="File path")
-    content: str = Field(..., description="File content")

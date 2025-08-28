@@ -1,6 +1,9 @@
-from typing import List, Dict, Any
+from typing import List, Dict
 from tree_sitter import Query, QueryCursor
 from src.analyzer.base_language_analyzer import BaseLanguageAnalyzer
+from src.entity.func_map_entity import FuncMapEntity
+from src.entity.func_call_entity import FuncCallEntity
+from src.entity.source_code_entity import SourceCodeEntity
 
 class CSharpAnalyzer(BaseLanguageAnalyzer):
     """C# 語言分析器"""
@@ -11,30 +14,26 @@ class CSharpAnalyzer(BaseLanguageAnalyzer):
             "GetHashCode", "Equals", "ToString", "ToInt", "GetType",
             "Dispose", "Close", "Finalize", "Clone", "Add", 
             "AddRange", "Clear", "Contains", "CopyTo", "Remove", 
-            "RemoveAt", "Insert", "InsertRange", "IndexOf", "LastIndexOf", 
-            "Sort", "Reverse", "Where", "Select", "SelectMany", 
-            "OrderBy", "OrderByDescending", "ThenBy", "ThenByDescending", "GroupBy", 
-            "Join", "GroupJoin", "Distinct", "Skip", "SkipWhile", 
-            "Take", "TakeWhile", "ToList", "ToArray", "ToDictionary", 
-            "ToLookup", "First", "FirstOrDefault", "Single", "SingleOrDefault", 
-            "Last", "LastOrDefault", "Any", "All", "Count", 
-            "LongCount", "Sum", "Average", "Max", "Min", 
-            "Aggregate", "ElementAt", "ElementAtOrDefault", "SequenceEqual", "Contains", 
-            "DefaultIfEmpty", "Concat", "Union", "Intersect", "Except",
-            "Zip", "Chunk", "Step", "IsNullOrEmpty", "IsNullOrWhiteSpace",
-            "GetEnumerator", "SaveChangesAsync", "Regex", "int", "string", 
-            "bool", "float", "double", "decimal", "DateTime", 
-            "TimeSpan", "Guid", "List", "Dictionary", "HashSet", 
-            "Queue", "Stack", "Array", "IEnumerable", "IEnumerator",
-            "IQueryable", "ICollection", "IList", "IDictionary", "IReadOnlyList", 
-            "IReadOnlyCollection", "IAsyncEnumerable", "IAsyncEnumerator", "Ok", "nameof", "Enum", "GetValues", "MethodBase", "GetCurrentMethod", "NotFound", "BadRequest"
+            "Ok", "nameof", "NotFound", "BadRequest"
         ]
         
         self.queries = {
-            "function_with_calls": """
+            "entities": """
+                [
+                    (class_declaration 
+                        name: (identifier) @entity_name
+                        body: (declaration_list) @entity_body
+                    ) @entity
+                    (interface_declaration
+                        name: (identifier) @entity_name  
+                        body: (declaration_list) @entity_body
+                    ) @entity
+                ]
+            """,
+            "methods_in_entity": """
                 (method_declaration 
-                    name: (identifier) @function_name
-                    body: (block) @function_body
+                    name: (identifier) @method_name
+                    body: (block)? @method_body
                 )
             """,
             "member_calls": """
@@ -49,233 +48,172 @@ class CSharpAnalyzer(BaseLanguageAnalyzer):
                 (invocation_expression
                     function: (identifier) @function
                 ) @full_expression
-            """,
-            "functions": """
-                (method_declaration name: (identifier) @name)
-            """,
-            "classes": """
-                (class_declaration name: (identifier) @name)
-            """,
-            "interfaces": """
-                (interface_declaration name: (identifier) @name)
             """
         }
     
-    def analyze_member_calls(self, tree, source_code: bytes) -> List[Dict]:
-        query = Query(self.lang, self.queries["member_calls"])
-        cursor = QueryCursor(query)
-        matches = cursor.matches(tree.root_node)
+    def analyze_file(self, source_code_entity: SourceCodeEntity) -> List[FuncMapEntity]:
+        code_bytes = source_code_entity.content.encode("utf-8")
+        tree = self.parser.parse(code_bytes)
         
-        calls = []
-        seen_signatures = set()
+        entities = []
         
-        for match in matches:
+        entity_query = Query(self.lang, self.queries["entities"])
+        entity_cursor = QueryCursor(entity_query)
+        entity_matches = entity_cursor.matches(tree.root_node)
+        
+        for match in entity_matches:
             captures = match[1]
             
-            call_info = {}
-            receiver = None
-            method = None
-            full_expr = None
+            entity_name = None
+            entity_body = None
+            entity_node = None
             
             for capture_name, nodes in captures.items():
                 for node in nodes:
-                    if capture_name == "receiver":
-                        receiver = self.extract_text(node, source_code)
-                    elif capture_name == "method":
-                        method = self.extract_text(node, source_code)
-                    elif capture_name == "full_expression":
-                        full_expr = self.extract_text(node, source_code)
-                        full_expr = "".join(full_expr.split())
+                    if capture_name == "entity_name":
+                        entity_name = self.extract_text(node, code_bytes)
+                    elif capture_name == "entity_body":
+                        entity_body = node
+                    elif capture_name == "entity":
+                        entity_node = node
             
-            if method and method not in self.common_methods:
-                signature = f"{receiver}.{method}" if receiver else method
-                
-                if signature not in seen_signatures:
-                    seen_signatures.add(signature)
-                    
-                    call_info = {
-                        "method": method,
-                        "receiver": receiver,
-                        "full_expression": full_expr
-                    }
-                    
-                    calls.append(call_info)
+            if not entity_name or not entity_body:
+                continue
+            
+            # 判斷實體類型
+            entity_type = "interface" if "interface_declaration" in entity_node.type else "class"
+            
+            # 分析這個實體內的方法
+            if entity_type == "interface":
+                # Interface 只提取方法聲明
+                method_names = self._extract_interface_methods(entity_body, code_bytes)
+                methods = {}  # Interface 沒有實現，fcalls 為空
+            else:
+                # Class 分析方法實現和調用
+                methods = self._analyze_methods_in_entity(entity_body, code_bytes)
+                method_names = list(methods.keys())
+            
+            entities.append(FuncMapEntity(
+                ciname=entity_name,
+                file_id=source_code_entity.file_id,
+                path=source_code_entity.path,
+                type=entity_type,
+                funcs=method_names,
+                fcalls=methods
+            ))
         
-        return calls
+        return entities
     
-    def analyze_function_calls(self, tree, source_code: bytes) -> Dict[str, List[Dict]]:
-        """分析每個函數內的調用"""
-        query = Query(self.lang, self.queries["function_with_calls"])
-        cursor = QueryCursor(query)
-        matches = cursor.matches(tree.root_node)
+    def _extract_interface_methods(self, interface_body, source_code: bytes) -> List[str]:
+        """提取接口中的方法聲明"""
+        method_query = Query(self.lang, """
+            (method_declaration 
+                name: (identifier) @method_name
+            )
+        """)
+        method_cursor = QueryCursor(method_query)
+        method_matches = method_cursor.matches(interface_body)
         
-        function_calls = {}
+        method_names = []
+        for match in method_matches:
+            captures = match[1]
+            for capture_name, nodes in captures.items():
+                if capture_name == "method_name":
+                    for node in nodes:
+                        method_name = self.extract_text(node, source_code)
+                        method_names.append(method_name)
         
-        for match in matches:
-            captures = match[1]  # captures 是 dict: {capture_name: [nodes]}
-            
-            function_name = None
-            function_body = None
-            
-            if "function_name" in captures:
-                for node_item in captures["function_name"]:
-                    function_name = self.extract_text(node_item, source_code)
-                    break  # 取第一個
-            
-            if "function_body" in captures:
-                for node_item in captures["function_body"]:
-                    function_body = node_item
-                    break  # 取第一個
-            
-            if function_name and function_body:
-                # 分析這個函數體內的調用
-                calls_in_function = []
-                
-                # 在函數體內查找成員調用
-                member_calls = self.find_calls_in_node(function_body, source_code, "member_calls")
-                calls_in_function.extend(member_calls)
-                
-                # 在函數體內查找直接調用
-                direct_calls = self.find_calls_in_node(function_body, source_code, "direct_calls")
-                calls_in_function.extend(direct_calls)
-                
-                if calls_in_function:  # 只記錄有調用的函數
-                    function_calls[function_name] = calls_in_function
-        
-        return function_calls
+        return method_names
     
-    def find_calls_in_node(self, node, source_code: bytes, call_type: str) -> List[Dict]:
+    def _analyze_methods_in_entity(self, entity_body, source_code: bytes) -> Dict[str, List[FuncCallEntity]]:
+        """分析實體內的方法及其調用"""
+        method_query = Query(self.lang, self.queries["methods_in_entity"])
+        method_cursor = QueryCursor(method_query)
+        method_matches = method_cursor.matches(entity_body)
+        
+        methods = {}
+        
+        for match in method_matches:
+            captures = match[1]
+            
+            method_name = None
+            method_body = None
+            
+            for capture_name, nodes in captures.items():
+                for node in nodes:
+                    if capture_name == "method_name":
+                        method_name = self.extract_text(node, source_code)
+                    elif capture_name == "method_body":
+                        method_body = node
+            
+            if method_name and method_body:
+                # 分析方法內的調用
+                calls = self._analyze_calls_in_method(method_body, source_code)
+                if calls:  # 只記錄有調用的方法
+                    methods[method_name] = calls
+        
+        return methods
+    
+    def _analyze_calls_in_method(self, method_body, source_code: bytes) -> List[FuncCallEntity]:
+        """分析方法內的調用"""
+        calls = []
+        seen_methods = set()
+        
+        # 分析成員調用
+        member_calls = self._find_calls_in_node(method_body, source_code, "member_calls")
+        calls.extend(member_calls)
+        
+        # 分析直接調用  
+        direct_calls = self._find_calls_in_node(method_body, source_code, "direct_calls")
+        calls.extend(direct_calls)
+        
+        # 去重
+        unique_calls = []
+        for call in calls:
+            if call.method not in seen_methods:
+                seen_methods.add(call.method)
+                unique_calls.append(call)
+        
+        return unique_calls
+    
+    def _find_calls_in_node(self, node, source_code: bytes, call_type: str) -> List[FuncCallEntity]:
         """在指定節點內查找調用"""
         query = Query(self.lang, self.queries[call_type])
         cursor = QueryCursor(query)
         matches = cursor.matches(node)
         
         calls = []
-        seen_methods = set()
-        
-        for match in matches:
-            captures = match[1]  # captures 是 dict: {capture_name: [nodes]}
-            
-            if call_type == "member_calls":
-                method = None
-                full_expr = None
-                
-                if "method" in captures:
-                    for node_item in captures["method"]:
-                        method = self.extract_text(node_item, source_code)
-                        break  # 取第一個
-                
-                if "full_expression" in captures:
-                    for node_item in captures["full_expression"]:
-                        full_expr = self.extract_text(node_item, source_code)
-                        full_expr = "".join(full_expr.split())
-                        break  # 取第一個
-                
-                if method and method not in self.common_methods and method not in seen_methods:
-                    seen_methods.add(method)
-                    calls.append({
-                        "method": method,
-                        "expr": full_expr
-                    })
-            
-            elif call_type == "direct_calls":
-                func_name = None
-                full_expr = None
-                
-                # 修正：正確處理 captures
-                if "function" in captures:
-                    for node_item in captures["function"]:
-                        func_name = self.extract_text(node_item, source_code)
-                        break  # 取第一個
-                
-                if "full_expression" in captures:
-                    for node_item in captures["full_expression"]:
-                        full_expr = self.extract_text(node_item, source_code)
-                        full_expr = "".join(full_expr.split())
-                        break  # 取第一個
-                
-                if func_name and func_name not in self.common_methods and func_name not in seen_methods:
-                    seen_methods.add(func_name)
-                    calls.append({
-                        "method": func_name,
-                        "expr": full_expr
-                    })
-        
-        return calls
-    
-    def analyze_direct_calls(self, tree, source_code: bytes) -> List[Dict]:
-        query = Query(self.lang, self.queries["direct_calls"])
-        cursor = QueryCursor(query)
-        matches = cursor.matches(tree.root_node)
-        
-        calls = []
-        seen_functions = set()
         
         for match in matches:
             captures = match[1]
             
-            func_name = None
+            method = None
             full_expr = None
             
-            # 先提取所有 capture 的內容
-            for capture_name, nodes in captures.items():
-                for node in nodes:
-                    if capture_name == "function":
-                        func_name = self.extract_text(node, source_code)
-                    elif capture_name == "full_expression":
-                        full_expr = self.extract_text(node, source_code)
-                        full_expr = "".join(full_expr.split())
+            if call_type == "member_calls":
+                for capture_name, nodes in captures.items():
+                    for node_item in nodes:
+                        if capture_name == "method":
+                            method = self.extract_text(node_item, source_code)
+                        elif capture_name == "full_expression":
+                            full_expr = self.extract_text(node_item, source_code)
+                            full_expr = "".join(full_expr.split())
+                            
+            elif call_type == "direct_calls":
+                for capture_name, nodes in captures.items():
+                    for node_item in nodes:
+                        if capture_name == "function":
+                            method = self.extract_text(node_item, source_code)
+                        elif capture_name == "full_expression":
+                            full_expr = self.extract_text(node_item, source_code)
+                            full_expr = "".join(full_expr.split())
             
-            if func_name and func_name not in self.common_methods and func_name not in seen_functions:
-                seen_functions.add(func_name)
-                
-                calls.append({
-                    "method": func_name,
-                    "full_expression": full_expr
-                })
+            if method and method not in self.common_methods:
+                calls.append(FuncCallEntity(
+                    method=method,
+                    expr=full_expr
+                ))
         
         return calls
     
-    def extract_symbols(self, tree, source_code: bytes, symbol_type: str) -> List[str]:
-        """提取函數或類名"""
-        query = Query(self.lang, self.queries[symbol_type])
-        cursor = QueryCursor(query)
-        matches = cursor.matches(tree.root_node)
-        
-        symbols = set()
-        for match in matches:
-            captures = match[1]
-            for capture_name, nodes in captures.items():
-                if capture_name == "name":
-                    for node in nodes:
-                        symbol = self.extract_text(node, source_code)
-                        symbols.add(symbol)
-        
-        return sorted(list(symbols))
-    
-    def analyze_file(self, content: str) -> Dict[str, Any]:
-        code_bytes = content.encode("utf-8")
-        tree = self.parser.parse(code_bytes)
-        
-        # 分析函數
-        function_calls = self.analyze_function_calls(tree, code_bytes)
-        
-        # 提取函數、類和介面
-        functions = self.extract_symbols(tree, code_bytes, "functions")
-        classes = self.extract_symbols(tree, code_bytes, "classes")
-        interfaces = self.extract_symbols(tree, code_bytes, "interfaces")
-        
-        # 提取所有調用的簡單列表（用於向後兼容）
-        all_calls = []
-        for func_name, calls in function_calls.items():
-            for call in calls:
-                if call['method'] not in all_calls:
-                    all_calls.append(call['method'])
-        
-        return {
-            'func': functions,
-            'cls': classes,
-            'interfaces': interfaces,
-            'calls': all_calls,
-            'fcalls': function_calls 
-        }
+

@@ -1,6 +1,9 @@
-from typing import Dict, Any
+from typing import List
 from abc import ABC, abstractmethod
 from tree_sitter_language_pack import get_language, get_parser
+
+from src.entity.func_map_entity import FuncMapEntity
+from src.entity.source_code_entity import SourceCodeEntity
 
 class BaseLanguageAnalyzer(ABC):
     """語言分析器基類"""
@@ -14,15 +17,18 @@ class BaseLanguageAnalyzer(ABC):
         return source_code[node.start_byte:node.end_byte].decode('utf-8').strip()
     
     @abstractmethod
-    def analyze_file(self, content: str) -> Dict[str, Any]:
+    def analyze_file(source_code_entity: SourceCodeEntity) -> List[FuncMapEntity]:
         """
-        分析單個文件，返回標準格式的結果
+        分析單個文件，返回實體列表
         
         Returns:
-            {
-                'functions': List[str],
-                'classes': List[str], 
-                'calls': List[str] 或 List[Dict] (詳細調用信息)
-            }
+            List[{
+                'ciname': str,
+                'file_id': int,
+                'path': str,
+                'type': str,
+                'funcs': List[str],
+                'fcalls': Dict[str, List[Dict]]
+            }]
         """
         pass

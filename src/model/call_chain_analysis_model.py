@@ -1,6 +1,8 @@
 import os
-from typing import List
+from typing import Optional
 from tinydb import TinyDB, Query
+
+from src.entity import CallChainResultEntity
 
 
 class CallChainAnalysisModel:
@@ -16,22 +18,16 @@ class CallChainAnalysisModel:
         """Get all call chain analysis records"""
         return self.db.all()
     
-    def insert(self, component: str, entry_name: str, analysis_data: dict):
+    def insert(self, call_chain_result: CallChainResultEntity):
         """Insert a single call chain analysis result"""
-        self.db.insert({
-            "component": component,
-            "entry_name": entry_name,
-            "analysis_data": analysis_data
-        })
+        self.db.insert(call_chain_result.model_dump())
     
-    def find_by_component_and_entry(self, component: str, entry_name: str) -> dict:
+    def find_by_component_and_entry(self, component: str, entry_name: str) -> Optional[CallChainResultEntity]:
         """Find call chain analysis by component and entry name"""
         CallChain = Query()
         results = self.db.search(
-            (CallChain.component == component) & (CallChain.entry_name == entry_name)
+            (CallChain.component == component) & (CallChain.name == entry_name)
         )
-        return results[0] if results else {}
-    
-    def batch_insert(self, analysis_records: List[dict]):
-        """Insert multiple call chain analysis records"""
-        self.db.insert_multiple(analysis_records)
+        if results:
+            return CallChainResultEntity(**results[0])
+        return None

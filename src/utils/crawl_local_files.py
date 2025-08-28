@@ -2,7 +2,8 @@ import os
 import fnmatch
 from typing import List
 import pathspec
-from src.model.file_info import FileInfo
+from src.entity.source_code_entity import SourceCodeEntity
+from src.utils.compress_content import compress_content
 
 def _should_include_file(filepath, include_patterns, exclude_patterns, gitignore_spec):
     """
@@ -74,7 +75,8 @@ def crawl_local_files(
     exclude_patterns=None,
     max_file_size=None,
     use_relative_paths=True,
-) -> List[FileInfo]:
+    is_compress=True
+) -> List[SourceCodeEntity]:
     """
     Crawl files in a local directory with similar interface as crawl_github_files.
     Args:
@@ -85,7 +87,7 @@ def crawl_local_files(
         use_relative_paths (bool): Whether to use paths relative to directory
 
     Returns:
-        List[FileInfo]: List of FileInfo objects
+        List[SourceCodeEntity]: List of SourceCodeEntity objects
     """
     if not os.path.isdir(directory):
         raise ValueError(f"Directory does not exist: {directory}")
@@ -94,7 +96,6 @@ def crawl_local_files(
     directory = os.path.abspath(directory)
     
     result_files = []
-    file_id = 0
 
     # --- Load .gitignore ---
     gitignore_path = os.path.join(directory, ".gitignore")
@@ -127,9 +128,9 @@ def crawl_local_files(
             filepath = os.path.join(root, filename)
             all_files.append(filepath)
 
+    file_id = 0
 
     for filepath in all_files:
-        # Use forward slashes for cross-platform compatibility
         if use_relative_paths:
             relpath = os.path.relpath(filepath, directory).replace(os.sep, '/')
         else:
@@ -142,13 +143,15 @@ def crawl_local_files(
 
         if max_file_size and os.path.getsize(filepath) > max_file_size:
             continue
-
         # --- File is being processed ---        
         try:
             with open(filepath, "r", encoding="utf-8-sig") as f:
                 content = f.read()
-            
-            file_info = FileInfo(
+                
+            if is_compress:
+                content = compress_content(content)
+
+            file_info = SourceCodeEntity(
                 file_id=file_id,
                 path=relpath,
                 content=content
@@ -159,28 +162,3 @@ def crawl_local_files(
             pass
 
     return result_files
-
-
-if __name__ == "__main__":
-    print("--- Crawling parent directory ('..') ---")
-    files_data = crawl_local_files(
-        ".",
-        exclude_patterns={
-            "*.pyc", 
-            "__pycache__/*",
-            ".venv/*", 
-            ".git/*",
-            "docs/*",
-            "output/*",
-            "node_modules/*",
-            "*/node_modules/*",
-            "*/.venv/*",
-            "*/.git/*",
-            "*/build/*",
-            "*/dist/*",
-            "*/data/*",
-        },
-    )
-    print(f"Found {len(files_data)} files:")
-    for file in files_data:
-        print(f" - {file.path} (ID: {file.file_id})")
