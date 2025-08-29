@@ -66,11 +66,14 @@ class GenerateDocumentationAgent:
 ## 資料存取
 * **讀取**: [table_read]
 * **寫入**: [table_write]
+
 | 資料表名稱 | 讀取功能 | 寫入功能 |
 | ----- | ---- | ---- |
 
 ## 外部服務呼叫清單
+
 [列出 external_api，包含服務名稱、端點、HTTP方法]
+
 | 服務名稱 | HTTP方法 | 端點 | 使用功能 | 備註 |
 | ---- | ------ | -- | ---- | -- |
 
