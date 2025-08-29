@@ -19,18 +19,3 @@ class Config():
         self.base_url_map = {
             "gemini": "https://generativelanguage.googleapis.com/v1beta/openai/"
         }
-        
-        self.default_include_patterns = {"*.cs"}
-        self.default_exclude_patterns = {
-            "*.md", 
-            "dockerfile",
-            "*test*",
-            "*Test*",
-            "*test*/*",
-            "*Test*/*",
-            "*/test*/*",
-            "*/Test*/*",
-            "tests/*",
-            "test/*",
-            "__tests__/*",
-        }

@@ -20,7 +20,9 @@ class Pipeline:
         target_dir: str, 
         lang: str = '中文',
         run_id: Optional[str] = None,
-        appoint_entries: Optional[list[str]] = None
+        appoint_entries: Optional[list[str]] = None,
+        include_patterns: Optional[list[str]] = None,
+        exclude_patterns: Optional[list[str]] = None
     ):
         # Generate or use provided run_id
         if not run_id:
@@ -75,7 +77,7 @@ class Pipeline:
         
         # Step 1: Source code extraction
         if not source_code_service.has_cache():
-            source_code_ent = source_code_service.crawl_repo(target_dir)
+            source_code_ent = source_code_service.crawl_repo(target_dir, include_patterns, exclude_patterns)
             print(f"--- Crawled {len(source_code_ent)} files ---")
             source_code_service.save_cache(source_code_ent)
         
