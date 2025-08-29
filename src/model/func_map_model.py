@@ -49,3 +49,8 @@ class FuncMapModel:
         """Insert multiple file function mapping entities at once"""
         self.db.insert_multiple([file_entity.model_dump() for file_entity in files_data])
     
+    def all(self) -> list[FuncMapEntity]:
+        """Get all function mapping entities"""
+        results = self.db.all()
+        return [FuncMapEntity(**record) for record in results]
+    

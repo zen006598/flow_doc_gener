@@ -97,7 +97,8 @@ b. For each `expr` in the calls returned:
      * For each potential dependency, use the `expr` to determine call chain targets.
      * Use `get_func_map()` on confirmed targets to query their dependencies.
      * Add confirmed new nodes to both the call_chain and the queue.
-* Stop **only when no new calls are discovered** (queue empty).
+* Stop **ONLY when the queue is empty AND no new calls are discovered should the process stop**.
+* Inspect Before terminating, review the last tool call. If find_caller_by_dep returned any valid dependencies, ensure that get_func_map has been called on each of them. If not, this indicates a failure to complete the task
 
 ---
 

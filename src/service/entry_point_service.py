@@ -22,41 +22,21 @@ class EntryPointService:
         self.source_code_model = source_code_model
         self.agent = agent
         
-    def _has_cache(self) -> bool:
+    def has_cache(self) -> bool:
         return self.entry_point_model.has_data()
     
-    def _save_cache(self, entry_points):
+    def save_cache(self, entry_points):
         self.entry_point_model.batch_insert(entry_points)
     
-    def _lost_func_map_data(self) -> bool:
-        return not self.file_function_map_model.has_data()
-    
-    async def ensure_entry_points(self, appoint_entries: Optional[list[str]] = None) -> bool:
-        
-        if self._has_cache():
-            print(f"Use cached entry points")
-            return True
-        
-        print(f"Extracting entry points")
-        
-        if self._lost_func_map_data():
-            print(f"Error: No file function map data found")
-            return False
-        
-        entry_points_data = None
+    async def extract_entry_points(self, appoint_entries: Optional[list[str]] = None) -> list[EntryPointEntity]:
+        entry_points = None
         
         if appoint_entries:
-            entry_points_data = self._extract_manually(appoint_entries)
+            entry_points = self._extract_manually(appoint_entries)
         else:
-            entry_points_data = await self._extract_with_ai()
-        
-        if not entry_points_data:
-            print(f"No entry points found")
-            return False
-        
-        self._save_cache(entry_points_data)
-        print(f"{len(entry_points_data)} entry points is founded")
-        return True
+            entry_points = await self._extract_with_ai()
+            
+        return entry_points
     
     def _extract_manually(self, appoint_entries: list[Any]):
         """

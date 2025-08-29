@@ -6,7 +6,7 @@ from src.entity import CallChainResultEntity
 
 
 class CallChainAnalysisModel:
-    def __init__(self, run_id: str, table: str = "call_chain_analysis"):
+    def __init__(self, run_id: str, table: str = "call_chain"):
         db_dir = f"cache/{run_id}"
         os.makedirs(db_dir, exist_ok=True)
         self.db = TinyDB(f"{db_dir}/{table}.json")
@@ -28,6 +28,7 @@ class CallChainAnalysisModel:
         results = self.db.search(
             (CallChain.component == component) & (CallChain.name == entry_name)
         )
+        
         if results:
             return CallChainResultEntity(**results[0])
         return None

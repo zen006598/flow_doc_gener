@@ -5,6 +5,8 @@ from .feature_analysis_entity import FeatureAnalysisEntity
 from .func_map_entity import FuncMapEntity
 from .func_call_entity import FuncCallEntity
 from .source_code_entity import SourceCodeEntity
+from .feature_status_entity import FeatureStatusEntity
+from .chart_entity import ChartEntity
 
 __all__ = [
     'CallChainResultEntity',
@@ -13,5 +15,7 @@ __all__ = [
     'FeatureAnalysisEntity',
     'FuncMapEntity',
     'FuncCallEntity',
-    'SourceCodeEntity'
+    'SourceCodeEntity',
+    'FeatureStatusEntity',
+    'ChartEntity'
 ]

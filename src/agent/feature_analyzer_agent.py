@@ -6,8 +6,9 @@ from src.core.config import Config
 from src.entity import FeatureAnalysisEntity
 
 class FeatureAnalyzerAgent:
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, lang: str):
         self.config = config
+        self.lang = lang
         
     def _get_client(self) -> ChatCompletionClient:
         return OpenAIChatCompletionClient(
@@ -22,8 +23,8 @@ class FeatureAnalyzerAgent:
                 structured_output=True
             ),
             parallel_tool_calls=False,
+            max_retries=3
         )
-        
     
     def get_agent(self, func_name: str) -> AssistantAgent:
         if not func_name:
@@ -33,22 +34,22 @@ class FeatureAnalyzerAgent:
             name=f"{func_name}_feature_analyzer",
             model_client=self._get_client(),
             output_content_type=FeatureAnalysisEntity,
-            system_message="""You are a **Feature Analysis Agent**. Your task is to analyze the complete functionality of an entry point by examining all related source code files and producing a comprehensive feature analysis.
+            system_message=f"""You are a **Feature Analysis Agent**. Your task is to analyze the complete functionality of an entry point by examining all related source code files and producing a {self.lang} comprehensive feature analysis.
 
 ## Input Format
 You will receive a JSON object containing function name and source code files:
 ```json
-{
+{{
     "func": "<function_name>",
     "contents": [
-        {
+        {{
             "file_id": <int>,
             "path": "<string>",
             "content": "<source code>"
-        },
+        }},
         ...
     ]
-}
+}}
 ```
 
 ## Analysis Requirements
@@ -57,7 +58,7 @@ Analyze the target function specified in the "func" field and all related code t
 
 ### 1. Basic Information
 - **entry_point_name**: Use the function name from the "func" field as the main function/method name
-- **http_url**: Extract HTTP route/endpoint if this is a web API (e.g., "/api/clients/{id}")
+- **http_url**: Extract HTTP route/endpoint if this is a web API (e.g., "/api/clients/{{id}}")
 - **http_method**: HTTP method (GET, POST, PUT, DELETE, etc.)
 - **parameters**: List all function parameters
 

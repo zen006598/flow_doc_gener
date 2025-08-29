@@ -28,33 +28,12 @@ class AnalysisService:
         self.call_chain_analyzer_agent = call_chain_analyzer_agent
         self.call_chain_finish_agent = call_chain_finish_agent
         self.feature_analyzer_agent = feature_analyzer_agent
-        
-    def _lost_entries_data(self) -> bool:
-        return not self.entry_point_model.has_data()
     
-    async def run_analysis(self) -> bool:
-        if self._lost_entries_data():
-            print("Error: No entry points found")
-            return False
-        
-        entries = self.entry_point_model.all()
-        
-        for entry in entries:
-            
-            print(f"Analyzing {entry.component}.{entry.name}")
-            
-            if not self._has_analyze_call_chain_cache(entry):
-                await self._analyze_call_chain(entry)
-                
-            if not self._has_analyze_feature_cache(entry):
-                await self._analyze_feature(entry)
-
-        return True
+    def has_analyze_call_chain_cache(self, entry_point: EntryPointEntity) -> bool:
+        result = self.call_chain_analysis_model.find_by_component_and_entry(entry_point.component, entry_point.name)
+        return result is not None
     
-    def _has_analyze_call_chain_cache(self, entry_point: EntryPointEntity) -> bool:
-        return self.call_chain_analysis_model.find_by_component_and_entry(entry_point.component, entry_point.name)
-    
-    async def _analyze_call_chain(self, entry_point: EntryPointEntity):           
+    async def analyze_call_chain(self, entry_point: EntryPointEntity):           
         prompt = json.dumps({
             "entry_point": {
                 "name": entry_point.name,
@@ -77,14 +56,14 @@ class AnalysisService:
         content = result.messages[-1].content
         self.call_chain_analysis_model.insert(content)
         
-    def _has_analyze_feature_cache(self, entry_point: EntryPointEntity) -> bool:
-        return self.feature_analysis_model.find_by_component_and_entry(entry_point.component, entry_point.name)
+    def has_analyze_feature_cache(self, entry_point: EntryPointEntity) -> bool:
+        result = self.feature_analysis_model.get_by_component_and_entry(entry_point.component, entry_point.name)
+        return result is not None
     
-    async def _analyze_feature(self, entry_point: EntryPointEntity) -> bool:
+    async def analyze_feature(self, entry_point: EntryPointEntity) -> bool:
         call_chain_entity = self.call_chain_analysis_model.find_by_component_and_entry(entry_point.component, entry_point.name)
         if not call_chain_entity:
-            print(f"No call chain data found for {entry_point.component}.{entry_point.name}")
-            return False
+            raise ValueError(f"Call chain analysis result not found for {entry_point.component}.{entry_point.name}")
         
         fids = self._extract_file_ids(call_chain_entity)
         source_code_entities = self.source_code_model.find_by_id(fids)
@@ -92,17 +71,11 @@ class AnalysisService:
             "func": entry_point.name,
             "contents": [source_file.model_dump() for source_file in source_code_entities]
         })
-        
-        try:
             
-            agent = self.feature_analyzer_agent.get_agent(entry_point.name)
-            res = await Console(agent.run_stream(task=prompt), output_stats=True)
-            content =  res.messages[-1].content.model_dump()
-            self.feature_analysis_model.insert(FeatureAnalysisEntity(**content))
-
-        except Exception as e:
-            print(f"Error during feature analysis for {entry_point.component}.{entry_point.name}: {e}")
-            return False
+        agent = self.feature_analyzer_agent.get_agent(entry_point.name)
+        res = await Console(agent.run_stream(task=prompt), output_stats=True)
+        content =  res.messages[-1].content.model_dump()
+        self.feature_analysis_model.insert(FeatureAnalysisEntity(**content))
         
     def _extract_file_ids(self, call_chain_analyze_result:CallChainResultEntity ) -> list[int]:
         fids = set()
