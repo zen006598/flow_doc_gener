@@ -36,7 +36,6 @@ class GenerateChartAgent:
             tool_call_summary_format="markdown",
             output_content_type=ChartEntity,
             system_message=f"""你是一位熟練的 Mermaid 流程圖設計師，專門將方法呼叫鏈轉換成流程圖。
-
 ## 任務
 - 根據輸入的 JSON 生成一個{self.lang}的 Mermaid 流程圖
 - 流程圖必須可直接渲染，語法正確
@@ -44,7 +43,9 @@ class GenerateChartAgent:
 - 節點標籤格式：依照「組件名稱 - 方法名稱」格式顯示
 - 若有 `data_access` 則在該節點之後加上資料庫節點，格式：「資料表名稱 - 操作類型」
 - 若為 API 呼叫，節點標籤顯示「服務名稱 - API呼叫」
-- **[]括號中絕對不可以出現()括號**，e.g.: S5 -->|Read| S5_DB[sModel (ElasticSearch) - Read] (ElasticSearch) 括號會造成錯誤，不要做
+- **[]括號中絕對不可以出現()括號與{{}}括號**
+    - S5 -->|Read| S5_DB[sModel (ElasticSearch) - Read] (ElasticSearch) 括號會造成錯誤，不要做
+    - S0[HTTP GET - /service/get/{{communityId}}] {{communityId}} 括號會造成錯誤，不要做, 不加括號顯示即可 S0[HTTP GET - /service/get/communityId]
 
 ## Mermaid 規則
 - 節點 ID 後不能有空格

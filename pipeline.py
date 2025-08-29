@@ -4,13 +4,13 @@ from datetime import datetime
 from typing import Optional
 from openai import RateLimitError
 
-from src.agent import CallChainAnalyzerAgent, CallChainFinisherAgent, EntryPointDetectorAgent, FeatureAnalyzerAgent, GenerateChartAgent
+from src.agent import CallChainAnalyzerAgent, CallChainFinisherAgent, EntryPointDetectorAgent, FeatureAnalyzerAgent, GenerateChartAgent, GenerateDocumentationAgent
 from src.analyzer.code_dependency_analyzer import CodeDependencyAnalyzer
 from src.analyzer.language_analyze_provider import LanguageAnalyzeProvider
 from src.core.config import Config
 from src.entity import FeatureStatusEntity
 from src.model import CallChainAnalysisModel, DependencyModel, EntryPointModel, FeatureAnalysisModel, FuncMapModel, SourceCodeModel, FeatureStatusModel, ChartModel
-from src.service import AnalysisService,DependencyService,EntryPointService, SourceCodeService, FuncMapService, ChartService
+from src.service import AnalysisService,DependencyService,EntryPointService, SourceCodeService, FuncMapService, ChartService, GenerateDocumentationService
 class Pipeline:
     def __init__(self, config: Config):
         self.config = config
@@ -68,6 +68,10 @@ class Pipeline:
         
         generate_chart_agent = GenerateChartAgent(self.config, lang)
         chart_service = ChartService(chart_model, feature_analysis_model, generate_chart_agent)
+        
+        generate_documentation_agent = GenerateDocumentationAgent(self.config, lang)
+        documentation_service = GenerateDocumentationService(
+            run_id, feature_analysis_model, chart_model, generate_documentation_agent)
         
         # Step 1: Source code extraction
         if not source_code_service.has_cache():
@@ -145,6 +149,12 @@ class Pipeline:
                         chart_service.save_cache(chart)
                     else:
                         print(f" > HIT CACHE: Chart for {ep.component}.{ep.name}")
+                        
+                    # generate documentation
+                    if not documentation_service.has_cache(ep):
+                        await documentation_service.generate_and_save(ep)
+                    else:
+                        print(f" > HIT CACHE: Documentation for {ep.component}.{ep.name}")
                         
                     feature_status_model.to_done(ep.entry_id)
                     print(f"Completed {ep.component}.{ep.name}")
