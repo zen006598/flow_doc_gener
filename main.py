@@ -27,8 +27,7 @@ async def main():
         description="Generate a API feature documentation for a repository."
     )
     
-    source_group = parser.add_mutually_exclusive_group(required=True)
-    source_group.add_argument("--dir", help="Path to local directory.")
+    parser.add_argument("--dir", help="Path to local directory.")
     parser.add_argument(
         "-i", "--include", 
         nargs="+", 
