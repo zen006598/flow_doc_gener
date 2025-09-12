@@ -41,8 +41,8 @@ async def main():
     )
     parser.add_argument(
         "-l", "--lang", 
-        default="english", 
-        help="Language for the generated tutorial (default: english)"
+        default="zh-TW", 
+        help="Language for the generated tutorial (default: zh-TW)"
     )
     parser.add_argument(
         "--run-id", 

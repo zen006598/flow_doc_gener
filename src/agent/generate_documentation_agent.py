@@ -3,7 +3,6 @@ from autogen_core.models import ChatCompletionClient
 from autogen_ext.models.openai import OpenAIChatCompletionClient
 from autogen_core.models._model_client import ModelInfo
 from src.core.config import Config
-from src.entity.feature_analysis_entity import FeatureAnalysisEntity
 
 class GenerateDocumentationAgent:
     def __init__(self, config: Config, lang: str):
