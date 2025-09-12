@@ -93,7 +93,6 @@ class Pipeline:
             dependency_service.save_cache(deps)
             
         # Step 3: Entry point extraction
-        # todo: If the run an existing run_id, the entry status needs to be reset.
         if not entry_point_service.has_cache():
             print(f"--- Analyzing entry points ---")
             entry_points = await entry_point_service.extract_entry_points(appoint_entries)
