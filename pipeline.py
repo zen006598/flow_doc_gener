@@ -93,6 +93,7 @@ class Pipeline:
             dependency_service.save_cache(deps)
             
         # Step 3: Entry point extraction
+        # todo: If the run an existing run_id, the entry status needs to be reset.
         if not entry_point_service.has_cache():
             print(f"--- Analyzing entry points ---")
             entry_points = await entry_point_service.extract_entry_points(appoint_entries)
@@ -140,6 +141,7 @@ class Pipeline:
                         print(f" > HIT CACHE: Call chain analysis for {ep.component}.{ep.name}")
                         
                     # Feature analysis
+                    #  todo: 分析後 component name 有機會出錯 要調整
                     if not analysis_service.has_analyze_feature_cache(ep):
                         await analysis_service.analyze_feature(ep)
                     else:
