@@ -48,7 +48,7 @@ class AnalysisService:
         custom_types = [StructuredMessage[CallChainResultEntity]]
         team = RoundRobinGroupChat(
             [analyzer, finisher], 
-            termination_condition=SourceMatchTermination(sources=[f"{entry_point.name}_call_chain_finisher"]),
+            termination_condition=SourceMatchTermination(sources=[f"{entry_point.name[:50]}_fin"]),
             custom_message_types=custom_types
         )
         

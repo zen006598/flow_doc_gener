@@ -41,7 +41,7 @@ class CallChainAnalyzerAgent:
         ]
         
         return AssistantAgent(
-            name=f"{func_name}_call_chain_analyzer",
+            name=f"{func_name[:50]}_anlz",
             model_client=self._get_client(),
             tools=tools,
             max_tool_iterations=60,

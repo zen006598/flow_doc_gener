@@ -31,7 +31,7 @@ class GenerateChartAgent:
             raise ValueError("Function / component name is required to create GenerateDocumentationAgent")
         
         return AssistantAgent(
-            name=f"generate_documentationP_agent",
+            name=f"generate_documentation_agent",
             model_client=self._get_client(),
             tool_call_summary_format="markdown",
             output_content_type=ChartEntity,

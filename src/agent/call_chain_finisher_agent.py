@@ -29,7 +29,7 @@ class CallChainFinisherAgent:
             raise ValueError("Function name is required to create CallChainFinisherAgent")
         
         return AssistantAgent(
-            name=f"{func_name}_call_chain_finisher",
+            name=f"{func_name[:50]}_fin",
             model_client=self._get_client(),
             output_content_type=CallChainResultEntity,
             system_message="""You are the Call-Chain Finisher.
